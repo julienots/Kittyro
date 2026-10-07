@@ -26,7 +26,7 @@ export const CAT_NAMES: Record<ItemCat, string> = {
 const items: ItemDef[] = [];
 for (const c of CROPS) {
   items.push({ id: c.id, name: c.name, icon: c.icon, cat: c.flower ? 'flower' : 'crop', sell: c.sell, desc: `Saison : ${c.seasons.length === 4 ? 'toutes' : c.seasons.map((s) => ({ spring: 'printemps', summer: 'été', autumn: 'automne', winter: 'hiver' })[s]).join(', ')}` });
-  items.push({ id: seedId(c.id), name: c.seedName, icon: '🌱', cat: 'seed', sell: Math.floor(c.seedPrice / 2), buy: c.seedPrice, desc: `Pousse en ${Math.round(c.grow / 60)} h de jeu arrosées.${c.regrow ? ' Repousse après récolte.' : ''}` });
+  items.push({ id: seedId(c.id), name: c.seedName, icon: c.icon, cat: 'seed', sell: Math.floor(c.seedPrice / 2), buy: c.seedPrice, desc: `Pousse en ${Math.round(c.grow / 60)} h de jeu arrosées.${c.regrow ? ' Repousse après récolte.' : ''}` });
 }
 for (const f of FISH) items.push({ id: f.id, name: f.name, icon: f.icon, cat: 'fish', sell: f.sell });
 for (const i of INSECTS) items.push({ id: i.id, name: i.name, icon: i.icon, cat: 'insect', sell: i.sell });
@@ -36,6 +36,11 @@ for (const t of FRUIT_TREES) items.push({ id: `sapling_${t.id}`, name: `Jeune ${
 
 export const ITEMS: Record<string, ItemDef> = {};
 for (const it of items) if (!ITEMS[it.id]) ITEMS[it.id] = it;
+
+/** Seeds show their crop icon plus a sprout badge in grids. */
+export function isSeed(id: string): boolean {
+  return id.startsWith('seed_') || id.startsWith('sapling_');
+}
 
 export function item(id: string): ItemDef {
   return ITEMS[id] ?? { id, name: id, icon: '❔', cat: 'misc', sell: 0 };

@@ -16,7 +16,7 @@ export const DEFAULT_LOOK: Appearance = {
   bottomColor: 0x4a5a8a,
   shoes: 'boots',
   shoesColor: 0x8a5a3a,
-  hat: 'straw',
+  hat: 'none',
   hatColor: 0xe8c86a,
   accessory: 'none',
   cheeks: true,

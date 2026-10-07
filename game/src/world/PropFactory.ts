@@ -122,7 +122,7 @@ export function staticPropGeo(model: string, season: Season, regionId: string): 
   return null;
 }
 
-export const propMat = () => vcMat({ seeThrough: true });
+export const propMat = () => vcMat({ seeThrough: true, snowCap: true });
 export const foliageMat = () => vcMat({ wind: 0.035, seeThrough: true, snowCap: true });
 export const cropMat = () => vcMat({ wind: 0.25 });
 export const grassMat = () => vcMat({ wind: 0.9 });

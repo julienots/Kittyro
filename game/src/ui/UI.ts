@@ -63,6 +63,11 @@ export class UI {
 
   constructor(public g: GameApi) {
     this.root = document.getElementById('ui')!;
+    this.toastsEl = h('div.toasts');
+    this.floatsEl = h('div.floats');
+    this.faderEl = h('div.fader');
+    this.fpsEl = h('div.fps.hidden');
+    this.root.append(this.floatsEl, this.toastsEl, this.faderEl, this.fpsEl);
   }
 
   // ------------------------------------------------------------ HUD
@@ -130,13 +135,6 @@ export class UI {
     // pointer events on interactive children only
     for (const el of this.hud.querySelectorAll('button, .card, .pill')) (el as HTMLElement).style.pointerEvents = 'auto';
     this.root.appendChild(this.hud);
-    if (!this.toastsEl) {
-      this.toastsEl = h('div.toasts');
-      this.floatsEl = h('div.floats');
-      this.faderEl = h('div.fader');
-      this.fpsEl = h('div.fps.hidden');
-      this.root.append(this.floatsEl, this.toastsEl, this.faderEl, this.fpsEl);
-    }
     this.applyLayout();
     this.refreshHud(true);
   }
@@ -158,7 +156,7 @@ export class UI {
     const w = st.weather.current;
     const fest = this.g.ctx.festivals.active();
     this.clockEl.replaceChildren(
-      h('span.ico', null, WEATHER_ICONS[w]),
+      h('span.ico', null, w === 'sun' && (st.time.minute >= 1200 || st.time.minute < 330) ? '🌙' : WEATHER_ICONS[w]),
       h('div', null,
         h('div.big', null, formatClock(st.time.minute)),
         h('div.sub', null, `${SEASON_ICONS[season]} ${SEASON_NAMES[season]} ${dayOfSeason(st.time.day)} · An ${yearOfDay(st.time.day)}`),

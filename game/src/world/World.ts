@@ -462,7 +462,7 @@ export class World {
           const restored = !!st.village[s.id!]?.restored;
           model = villageBuildingModel(def.style, s.w, s.d, def.roof, def.wall, restored);
           const g = new THREE.Group();
-          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true }));
+          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true }));
           m.castShadow = m.receiveShadow = true;
           g.add(m);
           if (model.windows) g.add(new THREE.Mesh(model.windows, windowMat));

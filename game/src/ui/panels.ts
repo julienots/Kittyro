@@ -53,7 +53,7 @@ function inventory(ui: UI, tab = 'bag'): void {
   const render = (): any[] => {
     if (tab === 'bag') {
       const grid = h('div.grid', null, ...st.inventory.map((s, i) => s
-        ? h(`button.slot${i === sel ? '.sel' : ''}`, { onclick: () => { sel = i; ui.setPanelBody(...render()); } }, item(s.id).icon, h('span.q', null, s.qty))
+        ? h(`button.slot${i === sel ? '.sel' : ''}`, { onclick: () => { sel = i; ui.setPanelBody(...render()); } }, item(s.id).icon, s.id.startsWith('seed_') ? h('span.seedtag', null, '🌱') : null, h('span.q', null, s.qty))
         : h('div.slot.empty')));
       const s = sel >= 0 ? st.inventory[sel] : null;
       const def = s ? item(s.id) : null;

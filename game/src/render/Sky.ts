@@ -22,7 +22,7 @@ interface Key {
 }
 
 const KEYS: Key[] = [
-  { m: 0, zenith: 0x10183a, horizon: 0x2a3a6a, below: 0x1a2448, sun: 0x8aa0ff, sunI: 0.40, hemiSky: 0x5a6aa8, hemiGround: 0x2a3050, hemiI: 0.58, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
+  { m: 0, zenith: 0x10183a, horizon: 0x2a3a6a, below: 0x1a2448, sun: 0x8aa0ff, sunI: 0.55, hemiSky: 0x6a7ab8, hemiGround: 0x3a4060, hemiI: 0.78, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
   { m: 300, zenith: 0x1a2048, horizon: 0x5a4a7a, below: 0x2a2a58, sun: 0x9aa0e0, sunI: 0.36, hemiSky: 0x6a6ab0, hemiGround: 0x3a3050, hemiI: 0.58, amb: 0x4a4880, fog: 0x3a3a68, night: 0.9 },
   { m: 360, zenith: 0x7a9ad8, horizon: 0xffb8a0, below: 0xf0c8c8, sun: 0xffc090, sunI: 0.72, hemiSky: 0xffd8c8, hemiGround: 0x8a7a6a, hemiI: 0.66, amb: 0xc8a8a8, fog: 0xf0d0c8, night: 0.3 },
   { m: 480, zenith: 0x8fcfff, horizon: 0xfff0d8, below: 0xe8f4ff, sun: 0xfff0d8, sunI: 1.12, hemiSky: 0xdff2ff, hemiGround: 0xc0b8a0, hemiI: 0.74, amb: 0xc8d8e8, fog: 0xe0f0f8, night: 0 },
@@ -30,8 +30,8 @@ const KEYS: Key[] = [
   { m: 1020, zenith: 0x8ab8f0, horizon: 0xffe0b0, below: 0xfff0d8, sun: 0xffd8a0, sunI: 1.12, hemiSky: 0xfff0d8, hemiGround: 0xa89a6a, hemiI: 0.74, amb: 0xe0c8b0, fog: 0xf8e8d0, night: 0 },
   { m: 1110, zenith: 0x6a7ac8, horizon: 0xff9a6a, below: 0xffb890, sun: 0xff9a5a, sunI: 0.90, hemiSky: 0xffb890, hemiGround: 0x8a6a5a, hemiI: 0.66, amb: 0xd8a088, fog: 0xf8b898, night: 0.15 },
   { m: 1200, zenith: 0x3a3a88, horizon: 0xb86a9a, below: 0x6a4a88, sun: 0xc88ab8, sunI: 0.54, hemiSky: 0x8a7ab8, hemiGround: 0x4a3a58, hemiI: 0.62, amb: 0x7a6aa0, fog: 0x7a5a98, night: 0.6 },
-  { m: 1290, zenith: 0x141c40, horizon: 0x2e3a70, below: 0x1e2850, sun: 0x8aa0ff, sunI: 0.40, hemiSky: 0x5a6aa8, hemiGround: 0x2a3050, hemiI: 0.58, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
-  { m: 1440, zenith: 0x10183a, horizon: 0x2a3a6a, below: 0x1a2448, sun: 0x8aa0ff, sunI: 0.40, hemiSky: 0x5a6aa8, hemiGround: 0x2a3050, hemiI: 0.58, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
+  { m: 1290, zenith: 0x141c40, horizon: 0x2e3a70, below: 0x1e2850, sun: 0x8aa0ff, sunI: 0.55, hemiSky: 0x6a7ab8, hemiGround: 0x3a4060, hemiI: 0.78, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
+  { m: 1440, zenith: 0x10183a, horizon: 0x2a3a6a, below: 0x1a2448, sun: 0x8aa0ff, sunI: 0.55, hemiSky: 0x6a7ab8, hemiGround: 0x3a4060, hemiI: 0.78, amb: 0x3a4880, fog: 0x2a3560, night: 1 },
 ];
 
 export interface LightState {
