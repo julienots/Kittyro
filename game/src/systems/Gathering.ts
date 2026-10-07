@@ -14,6 +14,8 @@ export interface NodeRef {
   variant?: number;
   /** transient nodes (mine floors) are not persisted */
   transient?: boolean;
+  /** never respawns once cleared (farm debris, story boulder, chests) */
+  once?: boolean;
 }
 
 export interface HitResult {
@@ -51,6 +53,7 @@ export class GatheringSystem {
   growth(n: NodeRef): number {
     const s = n.transient ? this.transient.get(n.id) : this.ctx.state.regions[n.region].nodes[n.id];
     if (!s || s.depletedAt === null) return 1;
+    if (n.once) return 0;
     const k = this.kind(n);
     const t = (this.ctx.state.absMinute - s.depletedAt) / k.respawn;
     if (t >= 1) {
