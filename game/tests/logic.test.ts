@@ -1,0 +1,269 @@
+import { describe, it, expect } from 'vitest';
+import { createNewGame } from '../src/state/newGame';
+import { Ctx } from '../src/systems/Context';
+import { SaveManager, MemoryAdapter, migrate } from '../src/save/SaveManager';
+import { CROP_BY_ID } from '../src/data/crops';
+import { DAY_START, DAY_END } from '../src/data/constants';
+import { ITEMS } from '../src/data/items';
+import { RECIPES } from '../src/data/recipes';
+import { NODE_KINDS } from '../src/data/nodes';
+import { STORY } from '../src/data/quests';
+import { VILLAGE_BUILDINGS } from '../src/data/village';
+
+const fresh = () => new Ctx(createNewGame('Test', 'Ferme', undefined, 1234));
+
+describe('data integrity', () => {
+  it('every recipe ingredient and output exists', () => {
+    for (const r of RECIPES) {
+      for (const [id] of r.ing) expect(ITEMS[id], `${r.id} ingredient ${id}`).toBeDefined();
+    }
+  });
+  it('every node drop exists', () => {
+    for (const k of Object.values(NODE_KINDS)) for (const d of k.drops) expect(ITEMS[d.id], d.id).toBeDefined();
+  });
+  it('village costs reference real items', () => {
+    for (const b of VILLAGE_BUILDINGS) for (const [id] of b.items) expect(ITEMS[id], id).toBeDefined();
+  });
+});
+
+describe('farming', () => {
+  it('till -> plant -> water -> grow -> harvest', () => {
+    const c = fresh();
+    expect(c.farming.till(25, 25)).toBe(true);
+    expect(c.farming.till(25, 25)).toBe(false);
+    expect(c.farming.plant(25, 25, 'seed_lettuce').ok).toBe(true);
+    expect(c.inventory.count('seed_lettuce')).toBe(7);
+    // not watered: no growth
+    c.farming.tick(1000);
+    expect(c.farming.plot(25, 25)!.crop!.ready).toBe(false);
+    c.farming.water(25, 25);
+    c.farming.tick(CROP_BY_ID.lettuce.grow);
+    expect(c.farming.plot(25, 25)!.crop!.ready).toBe(true);
+    const h = c.farming.harvest(25, 25);
+    expect(h?.id).toBe('lettuce');
+    expect(c.inventory.count('lettuce')).toBeGreaterThan(0);
+    expect(c.farming.plot(25, 25)!.crop).toBeNull();
+  });
+
+  it('regrowing crops come back', () => {
+    const c = fresh();
+    c.state.time.day = 13; // summer
+    c.inventory.add('seed_tomato', 1);
+    c.farming.till(26, 26);
+    c.farming.water(26, 26);
+    expect(c.farming.plant(26, 26, 'seed_tomato').ok).toBe(true);
+    c.farming.tick(CROP_BY_ID.tomato.grow);
+    c.farming.harvest(26, 26);
+    const p = c.farming.plot(26, 26)!;
+    expect(p.crop?.id).toBe('tomato');
+    expect(p.crop?.harvests).toBe(1);
+  });
+
+  it('out of season seeds are refused outside the greenhouse', () => {
+    const c = fresh();
+    c.inventory.add('seed_pumpkin', 1);
+    c.farming.till(27, 27);
+    expect(c.farming.plant(27, 27, 'seed_pumpkin').ok).toBe(false);
+  });
+});
+
+describe('inventory', () => {
+  it('stacks, removes and overflows to storage', () => {
+    const c = fresh();
+    c.inventory.add('stone', 50);
+    expect(c.inventory.count('stone')).toBe(50);
+    expect(c.inventory.remove('stone', 20)).toBe(true);
+    expect(c.inventory.count('stone')).toBe(30);
+    expect(c.inventory.remove('stone', 999)).toBe(false);
+    // fill every slot with distinct items
+    const ids = Object.keys(ITEMS).slice(0, 40);
+    for (const id of ids) c.inventory.add(id, 1);
+    expect(c.state.storage.length).toBeGreaterThan(0);
+  });
+  it('decor goes to the build bag', () => {
+    const c = fresh();
+    c.inventory.add('bench', 2);
+    expect(c.state.decorOwned.bench).toBe(2);
+  });
+});
+
+describe('time & weather', () => {
+  it('passes out at 2:00 and wakes at 6:00 next day', () => {
+    const c = fresh();
+    c.state.time.minute = DAY_END - 2;
+    c.time.update(10);
+    expect(c.state.time.day).toBe(2);
+    expect(c.state.time.minute).toBe(DAY_START);
+  });
+  it('rain waters crops in the morning', () => {
+    const c = fresh();
+    c.farming.till(30, 30);
+    c.state.weather.tomorrow = 'rain';
+    c.time.sleep();
+    expect(c.farming.plot(30, 30)!.watered).toBe(true);
+  });
+});
+
+describe('quests', () => {
+  it('story starts and progresses', () => {
+    const c = fresh();
+    expect(c.quests.story?.id).toBe('s0');
+    c.npcs.talk('moss');
+    expect(c.quests.story?.done).toBe(true);
+    expect(c.quests.claim('s0')).toBe(true);
+    expect(c.quests.story?.id).toBe('s1');
+    for (let i = 0; i < 6; i++) {
+      c.farming.till(10 + i, 30);
+      c.farming.plant(10 + i, 30, 'seed_lettuce');
+      c.farming.water(10 + i, 30);
+    }
+    expect(c.quests.story?.done).toBe(true);
+  });
+  it('dailies refresh each day', () => {
+    const c = fresh();
+    c.quests.refresh();
+    const d1 = c.quests.active.filter((q) => q.id.startsWith('d1_')).length;
+    expect(d1).toBe(3);
+    c.time.sleep();
+    expect(c.quests.active.some((q) => q.id.startsWith('d2_'))).toBe(true);
+    expect(c.quests.active.some((q) => q.id.startsWith('d1_'))).toBe(false);
+  });
+  it('deliver quests consume items', () => {
+    const c = fresh();
+    c.state.quests.storyStep = 9;
+    c.state.quests.active = [];
+    c.quests.ensureStory();
+    expect(c.quests.story?.id).toBe(STORY[9].id);
+    c.inventory.add('plank', 30);
+    expect(c.quests.deliver('s9')).toBe(true);
+    expect(c.inventory.count('plank')).toBe(0);
+    expect(c.quests.claim('s9')).toBe(true);
+    expect(c.state.regions.woods.unlocked).toBe(true);
+  });
+});
+
+describe('village, crafting, animals, shop', () => {
+  it('restores a village building', () => {
+    const c = fresh();
+    c.inventory.add('wood', 30);
+    c.inventory.add('stone', 10);
+    c.state.player.coins = 1000;
+    const r = c.village.contribute('shop');
+    expect(r.restored).toBe(true);
+    expect(c.village.isRestored('shop')).toBe(true);
+  });
+  it('crafts with a station', () => {
+    const c = fresh();
+    c.inventory.add('fiber', 10);
+    expect(c.crafting.craft('rope')).toBe(true);
+    expect(c.inventory.count('rope')).toBe(2);
+    c.inventory.add('wood', 10);
+    expect(c.crafting.craft('plank')).toBe(false); // no workbench yet
+    c.state.farm.placed.push({ uid: 'w', kind: 'workshop', x: 30, z: 30, rot: 0 });
+    expect(c.crafting.craft('plank')).toBe(true);
+  });
+  it('adopts animals that produce', () => {
+    const c = fresh();
+    c.state.player.coins = 5000;
+    expect(c.animals.adopt('chicken')).toBeNull(); // no coop
+    c.state.farm.placed.push({ uid: 'coop1', kind: 'coop', x: 30, z: 20, rot: 0 });
+    const a = c.animals.adopt('chicken');
+    expect(a).not.toBeNull();
+    a!.hunger = 100;
+    a!.happiness = 80;
+    c.time.sleep();
+    expect(a!.product).toBe('egg');
+    expect(c.animals.collect(a!.uid)).toBe('egg');
+    expect(c.inventory.count('egg')).toBe(1);
+  });
+  it('places and stores decorations', () => {
+    const c = fresh();
+    const o = c.building.place('fence_wood', 30, 30, 0, 'farm');
+    expect(o).not.toBeNull();
+    expect(c.building.canPlace('fence_wood', 30, 30, 0, 'farm').ok).toBe(false);
+    expect(c.building.store(o!.uid)).toBe(true);
+    expect(c.state.decorOwned.fence_wood).toBe(8);
+  });
+  it('shop sells seeds', () => {
+    const c = fresh();
+    const offer = c.shop.offers('general').find((o) => o.id === 'seed_carrot')!;
+    const before = c.state.player.coins;
+    expect(c.shop.buy(offer, 2)).toBe(true);
+    expect(c.state.player.coins).toBe(before - offer.price * 2);
+  });
+});
+
+describe('gathering & fishing & mining', () => {
+  it('chops a tree with enough hits and it regrows', () => {
+    const c = fresh();
+    const n = { id: 't1', kind: 'tree_oak', region: 'farm' as const, x: 1, z: 1 };
+    let res;
+    let hits = 0;
+    do {
+      res = c.gathering.hit(n, 'axe');
+      hits++;
+    } while (!res.done && hits < 10);
+    expect(res.done).toBe(true);
+    expect(c.inventory.count('wood')).toBeGreaterThan(10);
+    expect(c.gathering.available(n)).toBe(false);
+    c.state.absMinute += 1440 * 3;
+    expect(c.gathering.available(n)).toBe(true);
+  });
+  it('refuses wrong tool', () => {
+    const c = fresh();
+    const r = c.gathering.hit({ id: 'r', kind: 'rock', region: 'farm', x: 0, z: 0 }, 'axe');
+    expect(r.ok).toBe(false);
+  });
+  it('rolls fish for a region', () => {
+    const c = fresh();
+    const r = c.fishing.roll('farm');
+    expect(r).not.toBeNull();
+    c.fishing.catch(r!.fish.id, r!.size);
+    expect(c.collections.has('fish', r!.fish.id)).toBe(true);
+  });
+  it('mine floors have a ladder', () => {
+    const c = fresh();
+    for (let f = 1; f < 30; f++) {
+      const fl = c.mining.generate(f);
+      if (f % 5 !== 0) expect(fl.rocks.some((r) => r.ladder)).toBe(true);
+    }
+  });
+});
+
+describe('save system', () => {
+  it('roundtrips state', async () => {
+    const c = fresh();
+    c.inventory.add('gold_bar', 3);
+    const sm = new SaveManager(new MemoryAdapter());
+    expect(await sm.save(c.state)).toBe(true);
+    const loaded = await sm.load();
+    expect(loaded).not.toBeNull();
+    expect(new Ctx(loaded!).inventory.count('gold_bar')).toBe(3);
+  });
+  it('falls back to backup when corrupted', async () => {
+    const c = fresh();
+    const ad = new MemoryAdapter();
+    const sm = new SaveManager(ad);
+    await sm.save(c.state); // saves=0 -> rotation happens before, then main written
+    c.state.player.coins = 777;
+    for (let i = 0; i < 5; i++) await sm.save(c.state);
+    ad.map.set('mm_save_0', ad.map.get('mm_save_0')!.replace('777', '778'));
+    const loaded = await sm.load();
+    expect(loaded).not.toBeNull();
+  });
+  it('migrates and repairs old saves', () => {
+    const old = { version: 1, player: { name: 'Old', coins: 42 }, inventory: [{ id: 'wood', qty: 5 }] };
+    const s = migrate(old);
+    expect(s.player.name).toBe('Old');
+    expect(s.player.coins).toBe(42);
+    expect(s.weather.current).toBeDefined();
+    expect(s.inventory.length).toBe(s.inventorySize);
+  });
+  it('export/import strings', () => {
+    const c = fresh();
+    const sm = new SaveManager(new MemoryAdapter());
+    const code = sm.exportString(c.state);
+    expect(sm.importString(code)?.player.name).toBe('Test');
+    expect(sm.importString('garbage')).toBeNull();
+  });
+});

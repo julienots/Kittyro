@@ -1,0 +1,7 @@
+node_modules
+game/dist
+game/e2e/out
+android/build
+android/*.jks
+android/release.properties
+*.log
