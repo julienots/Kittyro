@@ -77,7 +77,7 @@ export class Game implements GameApi {
   audio = audio;
   hasSave = false;
   inShopRange = false;
-  private clock = new THREE.Clock();
+  private lastT = performance.now();
   private paused = 0;
   private running = false;
   private title = true;
@@ -509,7 +509,9 @@ export class Game implements GameApi {
   private loop = (): void => {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this.lastT) / 1000);
+    this.lastT = now;
     this.elapsed += dt;
     try {
       this.frame(dt);
@@ -909,7 +911,7 @@ export class Game implements GameApi {
     this.player.act('pet', null, () => {
       const c = CREATURE_BY_ID[ag.id];
       const shy = c.shy * (this.ctx.hasBuff('luck') ? 0.6 : 1);
-      if (Math.random() < shy * 0.35) {
+      if (Math.random() < shy * 0.2) {
         ag.flee(this.player.pos);
         this.ui.toast(`${c.name} a pris peur… approchez plus doucement`, '💨');
         return;

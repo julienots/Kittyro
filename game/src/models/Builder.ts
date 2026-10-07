@@ -145,7 +145,7 @@ export class ModelBuilder {
     const g = new THREE.ExtrudeGeometry(shape, { depth: W * 2, bevelEnabled: false });
     g.translate(0, 0, -W);
     g.rotateY(Math.PI / 2);
-    return this.push(g.toNonIndexed(), color, o);
+    return this.push(g.index ? g.toNonIndexed() : g, color, o);
   }
 
   /** Flat disc. */

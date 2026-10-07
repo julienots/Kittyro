@@ -15,7 +15,7 @@ export interface QualityProfile {
 }
 
 export const QUALITY: Record<Quality, QualityProfile> = {
-  low: { pixelRatio: 0.85, shadow: 0, post: false, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: false, drawDistance: 40 },
+  low: { pixelRatio: 1.0, shadow: 0, post: false, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: false, drawDistance: 40 },
   medium: { pixelRatio: 1.25, shadow: 1024, post: false, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 55 },
   high: { pixelRatio: 1.75, shadow: 2048, post: true, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 70 },
   ultra: { pixelRatio: 2.25, shadow: 4096, post: true, particles: 1, grass: 1.4, outlines: true, lights: 6, antialias: true, drawDistance: 90 },

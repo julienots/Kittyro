@@ -96,7 +96,7 @@ function quests(ui: UI): void {
     const kindName: Record<string, string> = { story: 'Histoire', daily: 'Quotidienne', weekly: 'Hebdo', village: 'Demande', farm: 'Quotidienne', fish: 'Quotidienne', animal: 'Quotidienne', explore: 'Quotidienne' };
     return [h('div.list', null, ...list.map((q) => h(`div.quest${q.kind === 'story' ? '.story' : ''}`, null,
       h('h3', null, q.title, h('span.kind-tag', null, kindName[q.kind] ?? q.kind)),
-      h('div.muted', null, q.desc),
+      q.kind === 'story' || q.kind === 'village' ? h('div.muted', null, q.desc) : null,
       ...q.objectives.map((o) => h(`div.obj${o.progress >= o.count ? '.done' : ''}`, null, h('span', null, `${o.progress >= o.count ? '✓' : '•'} ${objectiveText(o)}`), h('span', null, `${Math.min(o.progress, o.count)}/${o.count}`))),
       h('div.rewards', null, 'Récompense : ', [q.rewards.coins ? `🪙 ${q.rewards.coins}` : '', q.rewards.gems ? `💎 ${q.rewards.gems}` : '', q.rewards.xp ? `⭐ ${q.rewards.xp} XP` : '', ...(q.rewards.items ?? []).map((i) => `${item(i.id).icon}×${i.qty}`), q.rewards.friendship ? `🍃 ${NPC_BY_ID[q.rewards.friendship.npc]?.name}` : ''].filter(Boolean).join('  ')),
       h('div.row', { style: { marginTop: '8px' } },
