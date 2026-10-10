@@ -16,7 +16,7 @@ pousser pendant l'absence (plafonné).
 ## Contenu
 | Domaine | Contenu |
 |---|---|
-| Régions | Green Valley (ferme), Willowbrook (village), Whispering Woods, Crystal Mountains + mines, Sunny Coast, Frosty Peaks, Ember Valley, maison |
+| Régions | Green Valley (ferme), Willowbrook (village), **Clairefontaine (hameau à construire)**, Whispering Woods, Crystal Mountains + mines, Sunny Coast, Frosty Peaks, Ember Valley, maison |
 | Cultures | 17 (dont blé, maïs, carotte, tomate, fraise, pomme de terre, citrouille, salade, myrtille, pastèque, tournesol, tulipe, rose, chou d'hiver, ail, clochette de givre, fleur de lune), 5 stades visuels, repousse, serre |
 | Arbres fruitiers | pommier, cerisier, pêcher, oranger, citronnier |
 | Animaux de ferme | poule, canard, lapin, vache, mouton, chèvre, cochon, cheval (monture), chat, chien (suit le joueur) |
@@ -41,3 +41,29 @@ Joystick flottant (moitié gauche), toucher-pour-aller (avec interaction automat
 touchée), bouton d'action contextuel (le bon outil est choisi automatiquement pour arbres/rochers/
 herbes), bouton outil (appui long = roue d'outils), pinch pour zoomer, mode gaucher, choix du mode
 de contrôle dans le menu.
+
+## Clairefontaine — le hameau à construire (v1.1)
+Une clairière sauvage au sud de la ferme (sentier + panneau). Le joueur y fonde son propre village :
+- **16 bâtiments** : logements (cabane, chaumière, maison de pierre, grande demeure), lieux de travail
+  (scierie, carrière, champs communaux, cabane de pêche, fournil, atelier de tissage, forge, rucher,
+  taverne du Lapin Joyeux, halle du marché) et services (puits, kiosque à musique, statue du fondateur).
+- **Villageois générés** (nom, apparence, trait de caractère) : chaque lit libre attire un voyageur au
+  lever du jour (le premier arrive dès la première maison). Ils vivent une journée réglée : maison →
+  travail → taverne/place le soir → maison (ils rentrent vraiment chez eux), s'abritent quand il pleut.
+- **Bonheur** (logement, travail, puits, taverne, fournil, beauté des décorations, amitié, météo) →
+  productivité et nouveaux arrivants. **Production** quotidienne dans le coffre du registre 📒.
+- **Souhaits** (bulle 💭), cadeaux, métiers modifiables, 5 niveaux (Campement → Petite ville) qui
+  débloquent les bâtiments, **11 objectifs guidés** avec récompenses.
+- Nouveaux objets : poutre, pierre taillée, chaume, cire d'abeille, panier tressé ; plats : cidre,
+  tourte du hameau, maïs grillé, ragoût de Clairefontaine ; décorations : pavés, lanterne bleue,
+  bannière, massif de lavande, statue du renard.
+
+## Vie & réalisme (v1.1)
+Textures procédurales des bâtiments dans le shader (planches, briques, pierre, bardeaux, chaume,
+rondins, crépi, pavés) sans fichier image ni draw call supplémentaire ; ombres de nuages qui
+glissent sur le paysage ; volées d'oiseaux, mouettes sur la côte, moineaux qui s'envolent quand on
+approche ; passants dans Willowbrook (plus nombreux à mesure que le village est restauré).
+
+## Guidage (v1.1)
+Chaque option du menu est expliquée, volumes en %, guide du jeu (5 chapitres), astuces contextuelles
+affichées une seule fois (désactivables), carte de la vallée illustrée avec fiche de région.

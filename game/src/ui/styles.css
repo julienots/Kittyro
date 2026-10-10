@@ -209,15 +209,22 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: none; }
 .fader.night { background: #1c2244; color: #fff; }
 
 /* map */
-.map { position: relative; width: 100%; aspect-ratio: 1.6; border-radius: 22px; overflow: hidden; background: radial-gradient(ellipse at 50% 60%, #bfe8ff, #8fcfff); }
-.map .isle { position: absolute; transform: translate(-50%, -50%); text-align: center; transition: transform .2s; }
-.map .isle .blob { width: 92px; height: 64px; border-radius: 46% 54% 50% 50% / 55% 50% 50% 45%; display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: 0 8px 0 rgba(90,64,54,.25); margin: 0 auto; }
-.map .isle b { display: block; font-size: 12px; margin-top: 4px; background: rgba(255,255,255,.85); border-radius: 8px; padding: 1px 6px; }
-.map .isle.locked .blob { filter: grayscale(1) brightness(.85); opacity: .55; }
-.map .isle.here .blob { outline: 4px solid var(--rose); }
-.map .isle.unlocking { animation: unlock 1.6s ease-out; }
-@keyframes unlock { 0% { transform: translate(-50%,-50%) scale(.5); filter: brightness(2); } 60% { transform: translate(-50%,-50%) scale(1.3); } 100% { transform: translate(-50%,-50%) scale(1); } }
-.map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map { position: relative; width: 100%; border-radius: 22px; overflow: hidden; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='40'%3E%3Cpath d='M6 20 q8 -7 16 0 t16 0' stroke='%23fff' stroke-opacity='.35' stroke-width='2' fill='none'/%3E%3Cpath d='M46 36 q6 -5 12 0' stroke='%23fff' stroke-opacity='.25' stroke-width='2' fill='none'/%3E%3C/svg%3E") 0 0 / 60px 30px, radial-gradient(ellipse at 50% 55%, #d4f1ff 0%, #a6dcf8 60%, #7fc4ee 100%); box-shadow: inset 0 0 0 4px #fff; }
+.mapsvg { display: block; width: 100%; height: auto; max-height: calc(92vh - 190px); font-family: 'Fredoka', ui-rounded, sans-serif; }
+.map-isle { cursor: pointer; transition: transform .25s; }
+.map-isle:hover, .map-isle.sel { transform: scale(1.05); }
+.map-isle.unlocking { animation: unlockIsle 1.6s ease-out; }
+@keyframes unlockIsle { 0% { transform: scale(.5); filter: brightness(2); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.map-pin { animation: pinBob 1.2s ease-in-out infinite alternate; }
+@keyframes pinBob { to { transform: translateY(-8px); } }
+.map-cloud { animation: cloudDrift 60s linear infinite; }
+@keyframes cloudDrift { from { transform: translateX(-140px); } to { transform: translateX(1140px); } }
+.map-trail { animation: trailMove 2.4s linear infinite; }
+@keyframes trailMove { to { stroke-dashoffset: -38; } }
+.map-smoke { animation: smokeUp 3s ease-in-out infinite; }
+@keyframes smokeUp { 0% { transform: translateY(6px); opacity: .0; } 40% { opacity: .7; } 100% { transform: translateY(-14px); opacity: 0; } }
+.map-card { margin-top: 10px; padding: 10px 14px; background: var(--paper); border-radius: 18px; display: flex; gap: 12px; align-items: center; box-shadow: 0 3px 0 #ead9be; }
+.map-card .em { font-size: 36px; }
 
 /* title & creator */
 .title { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 30; background: linear-gradient(rgba(255,248,236,0), rgba(255,248,236,.35)); }

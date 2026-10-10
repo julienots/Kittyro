@@ -168,32 +168,157 @@ function collectionHint(cat: string, id: string): string {
 }
 
 // ====================================================================== map
-function map(ui: UI, unlockedNow?: string): void {
+/** Painted look per region: top colour, soil side, accent, island size. */
+const MAP_STYLE: Record<string, { top: string; top2: string; side: string; size: number; deco: string }> = {
+  farm: { top: '#9fd472', top2: '#c4e894', side: '#9a6a42', size: 1.0, deco: 'farm' },
+  village: { top: '#b8e08a', top2: '#dcf2b4', side: '#9a6a42', size: 0.95, deco: 'village' },
+  woods: { top: '#4f9e52', top2: '#79c06a', side: '#6a4a32', size: 1.05, deco: 'woods' },
+  mountains: { top: '#a8b4a0', top2: '#cfd8c4', side: '#7a7a88', size: 1.0, deco: 'mountains' },
+  mine: { top: '#8a7a78', top2: '#a8988e', side: '#4a3a38', size: 0.62, deco: 'mine' },
+  coast: { top: '#f4e0a8', top2: '#fff2c8', side: '#c8a06a', size: 1.0, deco: 'coast' },
+  frosty: { top: '#eef4ff', top2: '#ffffff', side: '#8a9ab8', size: 0.95, deco: 'frosty' },
+  ember: { top: '#9a6a5a', top2: '#c08a6a', side: '#3a2a2a', size: 0.95, deco: 'ember' },
+  hamlet: { top: '#c8e07a', top2: '#e4f2a8', side: '#9a6a42', size: 0.9, deco: 'hamlet' },
+};
+const MAP_W = 1000, MAP_H = 625;
+
+function blobPath(cx: number, cy: number, r: number, seed: number, squash = 0.62): string {
+  const pts: [number, number][] = [];
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const k = 1 + Math.sin(a * 3 + seed) * 0.08 + Math.sin(a * 5 + seed * 2.3) * 0.06;
+    pts.push([cx + Math.cos(a) * r * k, cy + Math.sin(a) * r * k * squash]);
+  }
+  // smooth closed curve through the points (Catmull-Rom → cubic Bézier)
+  let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += ` C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d + 'Z';
+}
+
+/** Small painted props drawn on each island (trees, roofs, peaks...). */
+function islandDeco(kind: string, cx: number, cy: number, r: number, hamletPop: number): string {
+  const tree = (x: number, y: number, s = 1, c = '#3f8a4a') => `<g transform="translate(${x} ${y}) scale(${s})"><rect x="-2" y="-2" width="4" height="9" rx="1.5" fill="#7a5232"/><circle cy="-8" r="9" fill="${c}"/><circle cx="-3" cy="-11" r="4" fill="#ffffff" opacity=".18"/></g>`;
+  const pine = (x: number, y: number, s = 1, c = '#2f7a4a') => `<g transform="translate(${x} ${y}) scale(${s})"><rect x="-1.6" y="0" width="3.2" height="6" fill="#6a4a32"/><path d="M0 -20 L10 2 L-10 2Z" fill="${c}"/><path d="M0 -20 L4 -11 L-2 -9Z" fill="#fff" opacity=".2"/></g>`;
+  const house = (x: number, y: number, s = 1, roof = '#e8665a', wall = '#fff4e0') => `<g transform="translate(${x} ${y}) scale(${s})"><rect x="-8" y="-8" width="16" height="11" rx="1.5" fill="${wall}"/><path d="M-11 -7 L0 -17 L11 -7Z" fill="${roof}"/><rect x="-2.5" y="-3" width="5" height="6" fill="#8a5a3a"/></g>`;
+  const peak = (x: number, y: number, s = 1, c = '#8a8a98', snow = '#ffffff') => `<g transform="translate(${x} ${y}) scale(${s})"><path d="M-18 6 L0 -24 L18 6Z" fill="${c}"/><path d="M0 -24 L7 -12 L2 -14 L-2 -10 L-7 -12Z" fill="${snow}"/><path d="M0 -24 L-18 6 L-6 6Z" fill="#000" opacity=".1"/></g>`;
+  const o: string[] = [];
+  switch (kind) {
+    case 'farm':
+      for (let i = 0; i < 4; i++) { const x = cx - 36 + i * 9, y = cy + 2; o.push(`<path d="M${x} ${y} h6 l-5 15 h-6Z" fill="${i % 2 ? '#a8784a' : '#8a5a3a'}"/>`); }
+      o.push(house(cx + 18, cy - 2, 1.2, '#d8665a'), tree(cx - 30, cy - 6, 0.9), tree(cx + 40, cy + 8, 0.7, '#5aa84a'));
+      break;
+    case 'village':
+      o.push(house(cx - 20, cy, 1, '#6a9ad8'), house(cx + 2, cy - 8, 1.15, '#e8a33a'), house(cx + 24, cy + 2, 1, '#6ab86a'), `<circle cx="${cx - 2}" cy="${cy + 14}" r="6" fill="#bfe8ff" stroke="#d8d0c0" stroke-width="2"/>`);
+      break;
+    case 'woods':
+      for (let i = 0; i < 9; i++) o.push(pine(cx - 40 + (i % 5) * 20 + (i > 4 ? 10 : 0), cy - 4 + (i > 4 ? 14 : 0), 0.85 + (i % 3) * 0.12, i % 2 ? '#2f7a4a' : '#3f8a5a'));
+      break;
+    case 'mountains':
+      o.push(peak(cx - 18, cy + 4, 1.1), peak(cx + 14, cy - 2, 1.4, '#9a9aa8'), pine(cx + 38, cy + 10, 0.7), `<path d="M${cx + 30} ${cy - 14} q4 10 0 22" stroke="#8fd3ff" stroke-width="3" fill="none"/>`);
+      break;
+    case 'mine':
+      o.push(`<path d="M${cx - 14} ${cy + 8} Q${cx} ${cy - 18} ${cx + 14} ${cy + 8}Z" fill="#2a1e1e"/><rect x="${cx - 16}" y="${cy - 10}" width="4" height="18" fill="#8a5a3a"/><rect x="${cx + 12}" y="${cy - 10}" width="4" height="18" fill="#8a5a3a"/><rect x="${cx - 17}" y="${cy - 12}" width="34" height="4" fill="#8a5a3a"/><circle cx="${cx + 20}" cy="${cy + 6}" r="3" fill="#9ae8ff"/>`);
+      break;
+    case 'coast':
+      o.push(`<path d="M${cx - 10} ${cy + 8} q2 -16 0 -24" stroke="#9a7a5a" stroke-width="3" fill="none"/><path d="M${cx - 10} ${cy - 16} q-14 -2 -18 6 M${cx - 10} ${cy - 16} q14 -4 18 4 M${cx - 10} ${cy - 16} q-4 -10 -12 -10" stroke="#4fb85a" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+        `<g transform="translate(${cx + 26} ${cy - 18})"><rect x="-4" y="0" width="8" height="26" fill="#fff"/><rect x="-4" y="6" width="8" height="5" fill="#e85a4a"/><rect x="-4" y="17" width="8" height="5" fill="#e85a4a"/><path d="M-6 0 L0 -8 L6 0Z" fill="#e85a4a"/></g>`, `<path d="M${cx + 2} ${cy + 16} l10 0 l-5 -14Z" fill="#fff"/>`);
+      break;
+    case 'frosty':
+      o.push(peak(cx - 16, cy + 6, 1.2, '#c8d8f0', '#ffffff'), peak(cx + 18, cy, 1.0, '#b8c8e8', '#ffffff'), pine(cx + 36, cy + 12, 0.7, '#5a8a9a'), `<ellipse cx="${cx - 34}" cy="${cy + 12}" rx="9" ry="6" fill="#fff" stroke="#c8d8e8"/>`);
+      break;
+    case 'ember':
+      o.push(`<path d="M${cx - 30} ${cy + 10} L${cx - 8} ${cy - 26} L${cx + 8} ${cy - 26} L${cx + 30} ${cy + 10}Z" fill="#4a3a3a"/><path d="M${cx - 8} ${cy - 26} L${cx + 8} ${cy - 26} L${cx + 4} ${cy - 18} L${cx - 4} ${cy - 18}Z" fill="#ff6a2a"/><path d="M${cx - 2} ${cy - 18} q6 14 -4 28" stroke="#ff8a3a" stroke-width="4" fill="none"/>`,
+        `<circle class="map-smoke" cx="${cx}" cy="${cy - 34}" r="7" fill="#d8c8c0" opacity=".7"/><circle class="map-smoke" cx="${cx + 6}" cy="${cy - 44}" r="9" fill="#e8dcd4" opacity=".55" style="animation-delay:-1.5s"/>`);
+      break;
+    case 'hamlet': {
+      // the hamlet grows on the map as villagers move in
+      o.push(`<path d="M${cx - 30} ${cy + 10} L${cx - 20} ${cy - 6} L${cx - 10} ${cy + 10}Z" fill="#e8a33a"/>`, `<circle cx="${cx + 2}" cy="${cy + 12}" r="3" fill="#ff9a3a"/>`, tree(cx + 34, cy - 4, 0.8), tree(cx - 40, cy - 8, 0.7, '#5aa84a'));
+      const houses = Math.min(5, Math.ceil(hamletPop / 2));
+      for (let i = 0; i < houses; i++) o.push(house(cx - 4 + (i % 3) * 16, cy - 6 + Math.floor(i / 3) * 14, 0.8, ['#d8b060', '#5a7aa8', '#b84a3a'][i % 3]));
+      break;
+    }
+  }
+  void r;
+  return o.join('');
+}
+
+function map(ui: UI, unlockedNow?: string, selected?: string): void {
   const g = ui.g;
   const st = g.ctx.state;
   const regions = REGIONS.filter((r) => r.id !== 'house');
+  const here = g.regionId === 'house' ? 'farm' : g.regionId;
   const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember'], ['farm', 'hamlet']];
-  const svg = `<svg viewBox="0 0 100 62.5" preserveAspectRatio="none">${links.map(([a, b]) => {
-    const A = REGION_BY_ID[a as 'farm'].map, B = REGION_BY_ID[b as 'farm'].map;
+  const P = (id: string) => { const m = REGION_BY_ID[id as 'farm'].map; return [m[0] * MAP_W, m[1] * MAP_H] as [number, number]; };
+  const R = (id: string) => 62 * (MAP_STYLE[id]?.size ?? 1);
+  const sel = selected ?? here;
+  const parts: string[] = [];
+  parts.push(`<svg viewBox="0 0 ${MAP_W} ${MAP_H}" class="mapsvg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff8c0" stop-opacity=".9"/><stop offset="1" stop-color="#fff8c0" stop-opacity="0"/></radialGradient>
+      <filter id="soft" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#2a5a7a" flood-opacity=".28"/></filter>
+      <filter id="gray"><feColorMatrix type="saturate" values="0.15"/></filter>
+    </defs>
+`);
+  // trails between islands
+  for (const [a, b] of links) {
+    const A = P(a), B = P(b);
     const on = st.regions[a as 'farm'].unlocked && st.regions[b as 'farm'].unlocked;
-    return `<path d="M${A[0] * 100} ${A[1] * 62.5} Q ${(A[0] + B[0]) * 50 + 4} ${(A[1] + B[1]) * 31.25 - 4} ${B[0] * 100} ${B[1] * 62.5}" stroke="${on ? '#fff8ec' : 'rgba(255,255,255,.35)'}" stroke-width="0.9" stroke-dasharray="2 1.5" fill="none"/>`;
-  }).join('')}</svg>`;
-  const colors: Record<string, string> = { farm: '#9fd472', village: '#b8e08a', woods: '#5fae5a', mountains: '#a8b0c0', coast: '#f4e0a8', frosty: '#eef4ff', ember: '#c87a5a', mine: '#8a7a78', hamlet: '#c8e07a' };
-  const mapEl = h('div.map', { html: svg }, ...regions.map((r) => {
+    const mx = (A[0] + B[0]) / 2 + (B[1] - A[1]) * 0.12, my = (A[1] + B[1]) / 2 - (B[0] - A[0]) * 0.12 - 10;
+    const d = `M${A[0]} ${A[1]} Q${mx} ${my} ${B[0]} ${B[1]}`;
+    parts.push(`<path d="${d}" stroke="${on ? '#8a6a4a' : '#ffffff'}" stroke-opacity="${on ? 0.35 : 0.25}" stroke-width="9" fill="none" stroke-linecap="round"/>`);
+    parts.push(`<path d="${d}" stroke="${on ? '#fff8ec' : '#ffffff'}" stroke-opacity="${on ? 1 : 0.5}" stroke-width="4" stroke-dasharray="10 9" fill="none" stroke-linecap="round" class="${on ? 'map-trail' : ''}"/>`);
+  }
+  // islands
+  regions.forEach((r, i) => {
+    const [cx, cy] = P(r.id);
+    const s = MAP_STYLE[r.id];
+    const rad = R(r.id);
     const unlocked = st.regions[r.id].unlocked;
-    const here = g.regionId === r.id || (g.regionId === 'house' && r.id === 'farm');
-    return h(`div.isle${unlocked ? '' : '.locked'}${here ? '.here' : ''}${unlockedNow === r.id ? '.unlocking' : ''}`, {
-      style: { left: `${r.map[0] * 100}%`, top: `${r.map[1] * 100}%` },
-      onclick: () => {
-        if (!unlocked) { ui.toast(r.unlockHint, '🔒', 'warn'); return; }
-        if (here) { ui.toast('Vous êtes ici !', '📍'); return; }
-        if (r.id === 'mine') { ui.toast('Entrez par la mine des Crystal Mountains.', '⛏️'); return; }
-        ui.confirm(`Voyager vers ${r.name} ?`, () => g.travel(r.id));
-      },
-    }, h('div.blob', { style: { background: colors[r.id] } }, r.icon), h('b', null, unlocked ? r.name : '???'));
-  }));
-  const legend = h('div.muted', { style: { marginTop: '8px' } }, `Régions découvertes : ${regions.filter((r) => st.regions[r.id].unlocked).length}/${regions.length} · Touchez une île pour voyager.`);
-  ui.showPanel('map', 'Carte de la vallée', [mapEl, legend], { size: 'wide' });
+    const isSel = sel === r.id;
+    const cls = `map-isle${unlocked ? '' : ' locked'}${unlockedNow === r.id ? ' unlocking' : ''}${isSel ? ' sel' : ''}`;
+    parts.push(`<g class="${cls}" data-r="${r.id}" style="transform-origin:${cx}px ${cy}px" ${unlocked ? '' : 'filter="url(#gray)"'}>`);
+    if (isSel) parts.push(`<ellipse cx="${cx}" cy="${cy + 6}" rx="${rad * 1.35}" ry="${rad * 0.95}" fill="url(#glow)"/>`);
+    parts.push(`<g filter="url(#soft)"><path d="${blobPath(cx, cy + 16, rad, i * 1.7)}" fill="${s.side}"/>`);
+    parts.push(`<path d="${blobPath(cx, cy + 9, rad * 0.98, i * 1.7)}" fill="${s.side}" style="filter:brightness(1.25)"/>`);
+    parts.push(`<path d="${blobPath(cx, cy, rad, i * 1.7)}" fill="${s.top}"/></g>`);
+    parts.push(`<path d="${blobPath(cx - rad * 0.15, cy - rad * 0.12, rad * 0.62, i * 2.1 + 1)}" fill="${s.top2}" opacity=".55"/>`);
+    parts.push(islandDeco(s.deco, cx, cy, rad, st.hamlet.villagers.length));
+    if (!unlocked) parts.push(`<g class="map-fog"><ellipse cx="${cx - 18}" cy="${cy - 4}" rx="34" ry="20" fill="#fff" opacity=".85"/><ellipse cx="${cx + 20}" cy="${cy + 2}" rx="30" ry="18" fill="#fff" opacity=".8"/><ellipse cx="${cx}" cy="${cy - 16}" rx="26" ry="16" fill="#fff" opacity=".9"/><text x="${cx}" y="${cy + 2}" text-anchor="middle" font-size="22">🔒</text></g>`);
+    // ribbon label
+    const label = unlocked ? r.name : '???';
+    const w = Math.max(70, label.length * 9.5 + 24);
+    const ly = cy + rad * 0.62 + 26;
+    parts.push(`<g class="map-label"><path d="M${cx - w / 2 - 10} ${ly - 8} l10 8 l-10 8 h14 v-16Z" fill="#c8a06a"/><path d="M${cx + w / 2 + 10} ${ly - 8} l-10 8 l10 8 h-14 v-16Z" fill="#c8a06a"/>
+      <rect x="${cx - w / 2}" y="${ly - 13}" width="${w}" height="24" rx="6" fill="${isSel ? '#ffd166' : '#fff8ec'}" stroke="#c8a06a" stroke-width="2"/>
+      <text x="${cx}" y="${ly + 4}" text-anchor="middle" font-size="15" font-weight="600" fill="#5a4036">${label}</text></g>`);
+    if (r.id === here) parts.push(`<g class="map-pin" style="transform-origin:${cx}px ${cy - rad * 0.6}px"><path d="M${cx} ${cy - rad * 0.3} c-14 -16 -16 -22 -16 -30 a16 16 0 0 1 32 0 c0 8 -2 14 -16 30Z" fill="#ff6f91" stroke="#fff" stroke-width="3"/><circle cx="${cx}" cy="${cy - rad * 0.3 - 30}" r="7" fill="#fff"/></g>`);
+    parts.push('</g>');
+  });
+  // drifting clouds, compass & cartouche
+  const cloud = (x: number, y: number, s: number, delay: number) => `<g class="map-cloud" style="animation-delay:${delay}s"><g transform="translate(${x} ${y}) scale(${s})" opacity=".85"><ellipse cx="0" cy="0" rx="42" ry="16" fill="#fff"/><ellipse cx="-18" cy="-10" rx="22" ry="16" fill="#fff"/><ellipse cx="14" cy="-14" rx="26" ry="20" fill="#fff"/></g></g>`;
+  parts.push(cloud(120, 90, 0.9, 0), cloud(820, 520, 1.1, -14), cloud(560, 40, 0.7, -30), cloud(60, 560, 0.8, -8));
+  parts.push(`<g transform="translate(925 72)" class="map-compass"><circle r="38" fill="#fff8ec" stroke="#c8a06a" stroke-width="3"/><path d="M0 -32 L7 0 L0 32 L-7 0Z" fill="#e8665a"/><path d="M0 32 L7 0 L-7 0Z" fill="#5a4036"/><path d="M-32 0 L0 -6 L32 0 L0 6Z" fill="#c8a06a" opacity=".7"/><circle r="4" fill="#fff"/><text y="-42" text-anchor="middle" font-size="14" font-weight="600" fill="#5a4036">N</text></g>`);
+  parts.push(`<g transform="translate(24 24)"><rect width="250" height="54" rx="14" fill="#fff8ec" stroke="#c8a06a" stroke-width="3"/><text x="125" y="24" text-anchor="middle" font-size="18" font-weight="600" fill="#5a4036">Vallée de Mossy Meadows</text><text x="125" y="43" text-anchor="middle" font-size="12.5" fill="#8a6e60">${regions.filter((r) => st.regions[r.id].unlocked).length}/${regions.length} régions découvertes</text></g>`);
+  parts.push('</svg>');
+  const mapEl = h('div.map', { html: parts.join('') });
+  // detail card for the selected island
+  const r = REGION_BY_ID[sel as 'farm'];
+  const unlocked = st.regions[r.id].unlocked;
+  const isHere = r.id === here;
+  const extra = r.id === 'hamlet' && unlocked ? ` · ${st.hamlet.villagers.length} villageois (${g.ctx.hamlet.levelName()})` : r.id === 'mine' ? ` · record : niveau ${st.mine.deepest}` : '';
+  const action = !unlocked ? h('span.muted', null, `🔒 ${r.unlockHint}`)
+    : isHere ? h('span.pill', null, '📍 Vous êtes ici')
+      : r.id === 'mine' ? h('span.muted', null, '⛏️ Entrée dans les Crystal Mountains')
+        : h('button.btn', { onclick: () => { ui.closePanel(); g.travel(r.id); } }, `🧭 Voyager`);
+  const card = h('div.map-card', null, h('span.em', null, unlocked ? r.icon : '❔'), h('div.grow', null, h('b', null, unlocked ? r.name : 'Région inconnue'), h('div.muted', null, unlocked ? `${r.desc}${extra}` : 'Un endroit encore mystérieux…')), action);
+  ui.showPanel('map', 'Carte de la vallée', [mapEl, card], { size: 'wide' });
+  for (const el of mapEl.querySelectorAll('[data-r]')) el.addEventListener('click', () => { g.audio.play('click'); map(ui, undefined, (el as HTMLElement).dataset.r); });
 }
 
 // ====================================================================== shop

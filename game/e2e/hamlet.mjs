@@ -25,7 +25,7 @@ await page.getByText('Commencer l\'aventure').click();
 await page.waitForTimeout(2500);
 await frames(5);
 // walk through the south trail portal
-await ev(() => { const g = window.__game; g.ui.closePanel(); g.player.teleport(23.5, 44.6); });
+await ev(() => { const g = window.__game; g.ui.closePanel(); g.player.teleport(23.5, 45.4); });
 await page.waitForTimeout(2500);
 await frames(10);
 check('portal farm -> hamlet', await ev(() => window.__game.regionId === 'hamlet'));
