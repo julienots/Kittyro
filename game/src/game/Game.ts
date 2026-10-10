@@ -9,12 +9,13 @@ import { SkyRig } from '../render/Sky';
 import { CameraRig } from '../render/CameraRig';
 import { Particles, PF } from '../render/Particles';
 import { WeatherFX } from '../render/WeatherFX';
+import { AmbientLife } from '../render/AmbientLife';
 import { globalUniforms } from '../render/Materials';
 import { World, type Interactable } from '../world/World';
 import { T, WALKABLE } from '../world/Layout';
 import { updateGlow, updateWindows } from '../world/PropFactory';
 import { Player } from '../entities/Player';
-import { EntityManager, type WildAgent } from '../entities/Agents';
+import { EntityManager, type WildAgent, type VillagerAgent } from '../entities/Agents';
 import { Input } from '../input/Input';
 import { audio } from '../audio/Audio';
 import { UI } from '../ui/UI';
@@ -33,13 +34,14 @@ import { INSECT_BY_ID } from '../data/insects';
 import { ANIMAL_BY_ID } from '../data/animals';
 import { VILLAGE_BY_ID } from '../data/village';
 import { BUILDING_BY_ID } from '../data/buildings';
+import { HAMLET_BY_ID } from '../data/hamlet';
 import { DECOR_BY_ID } from '../data/decor';
 import { RARITY_COLOR, RARITY_NAME } from '../data/fish';
 import { TOOL_BY_ID, toolArea } from '../data/tools';
 import { BUFF_NAMES } from '../data/recipes';
 import { FESTIVAL_BY_ID } from '../data/festivals';
 import { FRUIT_TREES } from '../data/resources';
-import { seasonOfDay, isNight, SEASON_NAMES, SECONDS_PER_GAME_MINUTE } from '../data/constants';
+import { seasonOfDay, isNight, SEASON_NAMES, SECONDS_PER_GAME_MINUTE, TOOL_TIERS } from '../data/constants';
 import { WEATHER_NAMES, WEATHER_ICONS } from '../systems/Weather';
 import { footprintOf } from '../systems/Building';
 import { structureGeo } from '../models/Buildings';
@@ -56,7 +58,7 @@ interface ActionTarget {
   z?: number;
 }
 
-const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home' };
+const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home', hamlet: 'village' };
 
 export class Game implements GameApi {
   settings: Settings;
@@ -66,6 +68,7 @@ export class Game implements GameApi {
   rig: CameraRig;
   particles: Particles;
   weatherFx: WeatherFX;
+  life = new AmbientLife();
   ctx!: Ctx;
   world!: World;
   player!: Player;
@@ -99,6 +102,7 @@ export class Game implements GameApi {
   private festivalSprite: THREE.Sprite | null = null;
   private tapMarker: THREE.Mesh;
   private offs: (() => void)[] = [];
+  private lastHamletProduce: { items: Record<string, number>; coins: number } | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.settings = loadSettings();
@@ -110,7 +114,7 @@ export class Game implements GameApi {
     this.particles.budget = this.renderer.profile.particles;
     this.weatherFx = new WeatherFX(this.particles, this.settings.quality === 'low' ? 400 : 900);
     const scene = this.renderer.scene;
-    scene.add(this.sky.group, this.particles.group, this.weatherFx.group);
+    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group);
     this.sky.setShadowSize(this.renderer.profile.shadow);
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
@@ -183,7 +187,7 @@ export class Game implements GameApi {
     this.world = new World(this.ctx, this.particles, () => this.renderer.profile.grass, () => this.renderer.profile.lights);
     this.ctx.terrain = {
       isTillable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT]),
-      isBuildable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH]),
+      isBuildable: (x, z) => (this.world.region === 'farm' || this.world.region === 'hamlet') && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH, T.FOREST]),
     };
     this.player = new Player(this.ctx, this.world, this.particles);
     this.player.outline = this.renderer.profile.outlines;
@@ -255,6 +259,7 @@ export class Game implements GameApi {
       if (isNew) {
         this.save();
         setTimeout(() => this.ui.toast(`Bienvenue à ${st.player.farmName} ! Allez parler à Moss 👴`, '🌿', 'good'), 1200);
+        setTimeout(() => this.ui.tip('controls', '🕹️', 'Premiers pas', 'Glissez le pouce à gauche pour marcher. Le gros bouton rond fait l\'action du moment (parler, récolter, couper…). Le guide complet est dans ⚙️ Menu → 📖 Guide.'), 4500);
       }
     }, isNew ? `Jour 1 · ${SEASON_NAMES.spring}` : '');
   }
@@ -314,7 +319,12 @@ export class Game implements GameApi {
     on('festival:start', (p) => { this.ui.toast(`${p.name} commence au village !`, FESTIVAL_BY_ID[p.id]?.icon ?? '🎉', 'good'); this.musicT = 0; });
     on('rainbow', () => { this.ui.toast('Un arc-en-ciel ! Les créatures rares sortent...', '🌈', 'good'); this.ctx.state.flags.rainbowDay = this.ctx.state.time.day; });
     on('lightning', () => { this.sky.flash = 1.2; setTimeout(() => audio.play('thunder'), 300 + Math.random() * 900); });
-    on('weather:changed', () => { this.musicT = 0; });
+    on('weather:changed', () => {
+      this.musicT = 0;
+      const w = this.ctx.state.weather.current;
+      if (w === 'rain' || w === 'storm') this.ui.tip('rain', '🌧️', 'Il pleut !', 'Bonne nouvelle : la pluie arrose toutes vos cultures. Certains poissons et créatures ne sortent que par temps de pluie.');
+    });
+    on('hour', (p) => { if (p.hour === 20) this.ui.tip('night', '🌙', 'La nuit tombe', 'Les lucioles et créatures nocturnes sortent. Quand vous êtes fatigué·e, dormez dans votre lit : pas de pénalité si vous veillez tard.'); });
     on('buff', (p) => this.ui.toast(BUFF_NAMES[p.id] ?? 'Bonus', '✨', 'good'));
     on('pass:tier', (p) => this.ui.toast(`Cozy Pass : palier ${p.tier} atteint !`, '🎟️', 'good'));
     on('mine:deepest', (p) => this.ui.toast(`Nouveau record : niveau ${p.floor}`, '⛏️', 'good'));
@@ -334,6 +344,23 @@ export class Game implements GameApi {
     on('trees:changed', () => this.world.farm?.refreshTrees());
     on('node:depleted', (p) => this.onNodeDepleted(p));
     on('day:start', () => this.onDayStart());
+    on('hamlet:arrival', (p) => {
+      this.ui.toast(`${p.name} s'installe à Clairefontaine !`, '🏡', 'good');
+      this.entities.syncVillagers();
+    });
+    on('hamlet:changed', () => this.entities.syncVillagers());
+    on('hamlet:produced', (p) => { this.lastHamletProduce = p; });
+    on('hamlet:level', (p) => {
+      audio.play('levelup');
+      this.ui.confetti();
+      this.ui.reveal(() => h('div', null, h('span.em', null, '🏘️'), h('h2', null, `Clairefontaine : ${p.name} !`), h('p', null, p.reward ? `Débloqué : ${p.reward}` : ''), h('p.muted', null, 'Votre hameau grandit. Continuez à construire des logements !')));
+    });
+    on('hamlet:goal', (p) => {
+      audio.play('quest');
+      const r = p.reward;
+      const parts = [r.coins ? `+${r.coins} 🪙` : '', r.gems ? `+${r.gems} 💎` : '', ...(r.items ?? []).map(([id, q]: [string, number]) => `${(DECOR_BY_ID[id]?.icon ?? item(id).icon)}×${q}`)].filter(Boolean).join(' ');
+      this.ui.toast(`Objectif du hameau : ${p.text} ✓ ${parts}`, '📒', 'good');
+    });
     on('slept', (p) => this.onSlept(p.passedOut));
     on('finale', () => {
       this.ui.confetti();
@@ -379,6 +406,7 @@ export class Game implements GameApi {
     this.rig.bounds = region === 'house' ? { x0: 8, z0: 5, x1: 14, z1: 9 } : { x0: 2, z0: 2, x1: L.w - 2, z1: L.d - 2 };
     this.player.setLantern(region === 'mine');
     this.particles.clear();
+    this.life.clear();
     if (region === 'mine' && floor && floor.floor % 5 === 0) this.revealLadder(11.5, 6.5);
     this.festivalSprite?.removeFromParent();
     this.festivalSprite = null;
@@ -395,6 +423,21 @@ export class Game implements GameApi {
     }
     this.ctx.progress('visit', region);
     if (this.weatherFx) this.placePuddles();
+    if (!this.title) this.regionTip(region);
+  }
+
+  private regionTip(region: RegionId): void {
+    const st = this.ctx.state;
+    const tips: Partial<Record<RegionId, [string, string, string]>> = {
+      hamlet: ['🏕️', 'Clairefontaine, votre hameau', 'Ouvrez 🔨 Construire et placez une cabane : un voyageur s\'y installera aussitôt. Le registre 📒 près du feu de camp suit vos villageois, la production et vos objectifs.'],
+      village: ['🏘️', 'Willowbrook', 'Les bâtiments en ruine se restaurent avec des matériaux : approchez-vous et touchez 🔨. Parlez aussi aux habitants chaque jour !'],
+      mine: ['⛏️', 'Les mines', 'Cassez les rochers à la pioche : l\'un d\'eux cache l\'échelle vers l\'étage suivant. Tous les 5 étages, un ascenseur !'],
+      house: ['🏡', 'Chez vous', 'Le lit permet de dormir jusqu\'au lendemain matin. Touchez 🔨 pour décorer et déplacer vos meubles.'],
+      woods: ['🌲', 'Whispering Woods', 'Les créatures sont timides : avancez lentement (sans courir) pour les observer.'],
+    };
+    const t = tips[region];
+    if (t) setTimeout(() => this.ui.tip(`region_${region}`, t[0], t[1], t[2]), 1600);
+    if (region === 'farm' && st.time.day >= 2) setTimeout(() => this.ui.tip('hamlet_hint', '🏕️', 'Un sentier au sud…', 'Un sentier part du sud de votre ferme vers une clairière sauvage : Clairefontaine. Vous pourrez y fonder votre propre hameau et accueillir des villageois !'), 2500);
   }
 
   travel(region: RegionId, anchor?: string): void {
@@ -405,7 +448,7 @@ export class Game implements GameApi {
       return;
     }
     // default arrival anchors
-    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door' };
+    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry' };
     audio.play('door');
     this.ui.fade(() => {
       this.loadRegion(region, anchor ?? defaults[region] ?? null);
@@ -484,7 +527,9 @@ export class Game implements GameApi {
       weather: `${WEATHER_ICONS[st.weather.today]} ${WEATHER_NAMES[st.weather.today]}`,
       forecast: `${WEATHER_ICONS[st.weather.tomorrow]} ${WEATHER_NAMES[st.weather.tomorrow]}`,
       fest: fest && fest.id !== 'rainbow' ? `${fest.icon} Aujourd'hui : ${fest.name} !` : undefined,
+      hamlet: this.lastHamletProduce ? [...Object.entries(this.lastHamletProduce.items).map(([id, q]) => `${item(id).icon}${q}`), this.lastHamletProduce.coins ? `🪙${this.lastHamletProduce.coins}` : ''].filter(Boolean).join(' ') : undefined,
     });
+    this.lastHamletProduce = null;
   }
 
   sleep(): void {
@@ -566,6 +611,13 @@ export class Game implements GameApi {
     this.world.update(dt, this.elapsed, night, this.player.pos, this.renderer.camera);
     this.weatherFx.update(dt, this.player.pos, weather, seasonOfDay(st.time.day), night, this.ctx.weather.rainbow(), !this.world.layout.indoor, this.world.region, (x, z) => this.world.heightAt(x, z), this.renderer.camera);
     this.particles.update(dt);
+    const outdoor = !this.world.layout.indoor;
+    globalUniforms.uCloud.value = outdoor ? Math.max(0, 1 - night * 1.6) * (1 - this.sky.overcast * 0.75) : 0;
+    this.life.update(dt, this.elapsed, this.player.pos, {
+      active: outdoor, night, weather, region: this.world.region,
+      groundY: (x, z) => this.world.heightAt(x, z),
+      walkable: (x, z) => this.world.walkable(x, z) && !this.world.isBlocked(x, z, 0.1),
+    });
     // periodic logic
     this.refreshNodesT -= dt;
     if (this.refreshNodesT <= 0) {
@@ -646,7 +698,7 @@ export class Game implements GameApi {
     if (this.current) this.ui.setAction({ icon: this.current.icon, label: this.current.label, enabled: true });
     else {
       const t = TOOL_BY_ID[this.ctx.state.player.activeTool];
-      this.ui.setAction({ icon: t.icon, label: t.name, enabled: false });
+      this.ui.setAction({ icon: t.icon, label: `${t.name} · ${TOOL_TIERS[this.ctx.state.player.tools[t.id as ToolId]]}`, enabled: false });
     }
   }
 
@@ -689,6 +741,13 @@ export class Game implements GameApi {
       for (const t of st.farm.fruitTrees) {
         if (!this.ctx.farming.treeHasFruit(t)) continue;
         consider(score(t.x + 0.5, t.z + 0.5, 1.5), () => ({ icon: FRUIT_TREES.find((f) => f.id === t.kind) ? item(FRUIT_TREES.find((f) => f.id === t.kind)!.fruit).icon : '🍎', label: 'Cueillir', run: () => this.player.act('pet', null, () => { this.ctx.farming.harvestTree(t.uid); }, 0.5) }));
+      }
+    }
+    if (this.world.region === 'hamlet') {
+      for (const p of st.hamlet.placed) {
+        const door = this.world.hamlet?.doorOf(p.uid);
+        if (!door) continue;
+        consider(score(door.x, door.z, 1.4) + 0.2, () => this.hamletBuildingAction(p.uid, p.kind));
       }
     }
     if (this.world.region === 'house') {
@@ -783,6 +842,20 @@ export class Game implements GameApi {
       case 'shrine': return { icon: '💜', label: 'Prier', run: () => this.shrine() };
       case 'fountain': return { icon: '⛲', label: 'Faire un vœu', run: () => this.fountain() };
       case 'festival': return { icon: it.icon, label: it.label, run: () => this.playFestival() };
+      case 'register': {
+        const n = this.ctx.hamlet.chestCount();
+        return { icon: '📒', label: n ? `Registre (${n} 🧺)` : 'Registre', run: () => this.ui.openPanel('hamlet') };
+      }
+      case 'traveller': return { icon: '⛺', label: 'Voyageur', run: runFace(() => this.traveller()) };
+      case 'villager': {
+        const v = this.ctx.hamlet.villager(it.data.uid);
+        if (!v) return null;
+        return { icon: v.wish ? '💭' : '💬', label: `Parler à ${v.name}`, run: runFace(() => this.talkVillager(v.uid)) };
+      }
+      case 'passerby': {
+        const ag = it.data.agent as VillagerAgent;
+        return { icon: '👋', label: `Saluer ${ag.def.name}`, run: runFace(() => { ag.talking = 2.5; audio.play('pop'); this.ui.dialogue({ name: ag.def.name, role: 'Habitant·e de Willowbrook', meter: '' }, ag.line, [{ label: 'Bonne journée ! 👋', cls: 'ghost', fn: () => this.ui.closeDialogue() }]); }) };
+      }
     }
     return null;
   }
@@ -861,6 +934,91 @@ export class Game implements GameApi {
       }
     }
     return null;
+  }
+
+  private hamletBuildingAction(uid: string, kind: string): ActionTarget | null {
+    const def = HAMLET_BY_ID[kind];
+    const hs = this.ctx.hamlet;
+    const st = this.ctx.state;
+    if (def.kind === 'home') {
+      const res = hs.residents(uid);
+      return { icon: def.icon, label: res.length ? res.map((v) => v.name).join(' & ') : `${def.name} (libre)`, run: () => this.ui.toast(res.length ? `${def.name} de ${res.map((v) => v.name).join(', ')} · ${res.length}/${def.beds} lit(s)` : `${def.name} libre : un voyageur s'y installera demain matin.`, def.icon) };
+    }
+    switch (kind) {
+      case 'h_tavern': return { icon: '🍺', label: 'Boire un cidre (25 🪙)', run: () => {
+        if (st.flags.tavernDay === st.time.day) { this.ui.toast('Un verre par jour, c\'est la règle de la maison 😉', '🍺'); return; }
+        if (!this.ctx.economy.spend(25)) { this.ui.toast('Pas assez de pièces', '🪙', 'warn'); return; }
+        st.flags.tavernDay = st.time.day;
+        st.player.buffs.speed = Math.max(st.player.buffs.speed ?? 0, st.absMinute) + 120;
+        for (const v of st.hamlet.villagers) v.happiness = Math.min(100, v.happiness + 2);
+        audio.play('eat');
+        this.player.celebrate();
+        this.particles.notes(this.player.pos.x, this.player.pos.y + 1.8, this.player.pos.z, 3);
+        this.ui.toast('Santé ! Les villageois trinquent avec vous. +Vitesse', '🍺', 'good');
+      } };
+      case 'h_market': return { icon: '🏪', label: 'Vendre à la halle', run: () => this.ui.openPanel('sell', 'market') };
+      case 'h_well': return { icon: '🪣', label: 'Puiser de l\'eau', run: () => { this.ctx.tools.refill(); audio.play('refill'); this.ui.toast('Arrosoir rempli', '💧'); } };
+      case 'h_bandstand': return { icon: '🎶', label: 'Danser', run: () => {
+        this.player.celebrate();
+        this.particles.notes(this.player.pos.x, this.player.pos.y + 1.8, this.player.pos.z, 4);
+        audio.play('levelup');
+        if (st.flags.danceDay !== st.time.day) {
+          st.flags.danceDay = st.time.day;
+          for (const v of st.hamlet.villagers) v.happiness = Math.min(100, v.happiness + 4);
+          this.ui.toast('Vous dansez avec les villageois ! +Bonheur pour tous', '💃', 'good');
+        } else this.ui.toast('Encore une petite danse !', '💃');
+      } };
+      case 'h_statue': return { icon: '🗿', label: 'Admirer', run: () => this.ui.toast(`« À ${st.player.name}, fondateur·rice de ${st.hamlet.name} » — gravé dans la pierre.`, '🗿') };
+    }
+    if (def.kind === 'work') {
+      const ws = hs.workers(uid);
+      return { icon: def.icon, label: `${def.name} (${ws.length}/${def.jobs})`, run: () => this.ui.openPanel('hamletBuilding', uid) };
+    }
+    return { icon: def.icon, label: def.name, run: () => this.ui.toast(def.desc, def.icon) };
+  }
+
+  private traveller(): void {
+    const hs = this.ctx.hamlet;
+    const name = 'Vagabond Lou';
+    const text = hs.population() === 0
+      ? 'Bienvenue à Clairefontaine ! Cette clairière n\'attend qu\'un peu de courage. Construisez une cabane et je connais des gens qui viendraient s\'installer… moi le premier !'
+      : `Clairefontaine compte déjà ${hs.population()} habitant${hs.population() > 1 ? 's' : ''}. Chaque logement libre attire un nouveau voyageur au lever du jour, surtout si le hameau est joli et que tout le monde est heureux.`;
+    audio.play('pop');
+    this.ui.dialogue({ name, role: 'Voyageur', meter: '🎒' }, text, [
+      { label: '📒 Registre', cls: 'sky', fn: () => this.ui.openPanel('hamlet') },
+      { label: '🔨 Construire', fn: () => this.ui.openPanel('build') },
+      { label: 'Merci !', cls: 'ghost', fn: () => this.ui.closeDialogue() },
+    ]);
+  }
+
+  private talkVillager(uid: string): void {
+    const hs = this.ctx.hamlet;
+    const v = hs.villager(uid);
+    if (!v) return;
+    const text = hs.talk(uid);
+    const ag = this.entities.villagerAgent(uid);
+    if (ag) ag.talking = 2.5;
+    audio.play('pop');
+    const job = v.jobUid ? HAMLET_BY_ID[this.ctx.state.hamlet.placed.find((p) => p.uid === v.jobUid)?.kind ?? '']?.job : null;
+    const hearts = '❤️'.repeat(Math.round(v.friendship / 20)) + '·'.repeat(5 - Math.round(v.friendship / 20));
+    const opts: { label: string; cls?: string; fn: () => void }[] = [];
+    if (v.wish) {
+      const can = hs.canDeliverWish(uid);
+      opts.push({ label: `${can ? '🧺 Donner' : '💭 Souhait'} ${item(v.wish.id).icon}×${v.wish.qty}`, cls: can ? 'peach' : 'ghost', fn: () => {
+        if (!can) { this.ui.toast(`Il vous faut ${v.wish!.qty}× ${item(v.wish!.id).name} (vous en avez ${this.ctx.inventory.count(v.wish!.id)})`, item(v.wish!.id).icon, 'warn'); return; }
+        const r = hs.deliverWish(uid);
+        if (r.ok) {
+          audio.play('quest');
+          if (ag) this.particles.hearts(ag.pos.x, ag.pos.y + 1.6, ag.pos.z, 5);
+          this.ui.dialogue({ name: v.name, role: job ?? 'Villageois·e', meter: hearts }, `Oh merci, merci ! Tu es formidable ! Tiens, prends ça. (+${r.coins} 🪙${r.gems ? ' +1 💎' : ''})`, [{ label: 'Avec plaisir 😊', fn: () => this.ui.closeDialogue() }]);
+        }
+      } });
+    }
+    if (v.giftedDay !== this.ctx.state.time.day) opts.push({ label: '🎁 Offrir', cls: 'sky', fn: () => this.ui.openPanel('villagerGift', uid) });
+    opts.push({ label: '💼 Travail', cls: 'lav', fn: () => this.ui.openPanel('villager', uid) });
+    opts.push({ label: 'À bientôt 👋', cls: 'ghost', fn: () => this.ui.closeDialogue() });
+    const moodIcon = v.happiness >= 70 ? '😊' : v.happiness >= 40 ? '🙂' : '😟';
+    this.ui.dialogue({ name: `${v.name} ${moodIcon}`, role: job ?? (v.homeUid ? 'Sans emploi' : 'Sans logis'), meter: hearts }, text, opts);
   }
 
   private villageAction(id: string): void {
@@ -1294,11 +1452,11 @@ export class Game implements GameApi {
   }
 
   enterPlacement(kind: string, uid?: string): void {
-    if (this.world.region !== 'farm' && this.world.region !== 'house') {
-      this.ui.toast('Retournez à la ferme pour construire.', '🏡');
+    if (this.world.region !== 'farm' && this.world.region !== 'house' && this.world.region !== 'hamlet') {
+      this.ui.toast('Construisez à la ferme, dans la maison ou au hameau de Clairefontaine.', '🏡');
       return;
     }
-    if (BUILDING_BY_ID[kind]) {
+    if (BUILDING_BY_ID[kind] || HAMLET_BY_ID[kind]) {
       const a = this.ctx.building.affordable(kind);
       if (!a.ok) { this.ui.toast(a.reason!, '🔨', 'warn'); return; }
     }
@@ -1308,7 +1466,7 @@ export class Game implements GameApi {
   }
 
   enterEditMode(): void {
-    if (this.world.region !== 'farm' && this.world.region !== 'house') return;
+    if (this.world.region !== 'farm' && this.world.region !== 'house' && this.world.region !== 'hamlet') return;
     this.input.dragMode = true;
     this.placement.beginEdit();
   }
@@ -1325,6 +1483,8 @@ export class Game implements GameApi {
     if (kind === 'placed') {
       this.world.farm?.refreshPlaced();
       this.world.farm?.refreshTrees();
+      this.world.hamlet?.refreshPlaced();
+      this.entities.syncVillagers();
       this.world.house?.refreshFurniture();
       this.world.rebuildGrass();
       this.entities.syncAnimals();

@@ -30,6 +30,7 @@ export const DECOR: DecorDef[] = [
   D('path_wood', 'Chemin de bois', '🟫', 'paths', [1, 1], 12, 'path', 0xc89a6a, 0xa87a4a, { path: true }),
   D('path_brick', 'Chemin de briques', '🧱', 'paths', [1, 1], 15, 'path', 0xd8806a, 0xb8604a, { path: true }),
   D('path_moss', 'Dalles moussues', '🟩', 'paths', [1, 1], 14, 'path', 0xb8c8a0, 0x8aa870, { path: true }),
+  D('path_cobble', 'Pavés du hameau', '🔘', 'paths', [1, 1], 0, 'path', 0xb8b4ac, 0x8a867e, { path: true }),
   D('path_sand', 'Chemin de sable', '🟨', 'paths', [1, 1], 8, 'path', 0xf0e0b0, 0xd8c890, { path: true }),
   // nature
   D('round_bush', 'Buisson rond', '🌳', 'nature', [1, 1], 60, 'bush', 0x5aa84a, 0x3f8f3a),
@@ -49,6 +50,7 @@ export const DECOR: DecorDef[] = [
   D('flowerbed_blue', 'Massif bleu', '💠', 'flowers', [1, 1], 50, 'flowerbed', 0x6a8aff, 0x5aa84a, { blocks: false }),
   D('flowerbed_yellow', 'Massif jaune', '🌼', 'flowers', [1, 1], 50, 'flowerbed', 0xffd03a, 0x5aa84a, { blocks: false }),
   D('rose_arch', 'Arche de roses', '🌹', 'flowers', [2, 1], 400, 'arch', 0xffffff, 0xff5a7a, { blocks: false }),
+  D('flowerbed_purple', 'Massif de lavande', '💜', 'flowers', [1, 1], 50, 'flowerbed', 0xa87ae8, 0x5aa84a, { blocks: false }),
   D('sunflower_row', 'Rangée de tournesols', '🌻', 'flowers', [2, 1], 120, 'sunflowers', 0xffc62a, 0x5ca843),
   // furniture (outdoor)
   D('bench', 'Banc de parc', '🪑', 'furniture', [2, 1], 150, 'bench', 0xb07a4a, 0x5a5a5a),
@@ -64,6 +66,7 @@ export const DECOR: DecorDef[] = [
   D('gazebo', 'Kiosque', '⛩️', 'buildings', [3, 3], 1200, 'gazebo', 0xffffff, 0x6a9ad8),
   D('windmill_toy', 'Petit moulin décoratif', '🌀', 'buildings', [1, 1], 260, 'mini_windmill', 0xf4e6c8, 0xc8463a),
   D('fountain', 'Fontaine', '⛲', 'buildings', [2, 2], 900, 'fountain', 0xd8d0c0, 0x6ac8f0),
+  D('fox_statue', 'Statue du renard', '🦊', 'buildings', [1, 1], 0, 'statue', 0xe8a06a, 0xc8803a),
   D('statue_bunny', 'Statue lapin', '🐇', 'buildings', [1, 1], 450, 'statue', 0xd8d0c8, 0xb8b0a8),
   // rustic
   D('fence_wood', 'Barrière en bois', '🚧', 'rustic', [1, 1], 15, 'fence', 0xb07a4a, 0x8a5a3a),
@@ -81,6 +84,7 @@ export const DECOR: DecorDef[] = [
   D('lamp_post', 'Lampadaire', '🏮', 'lights', [1, 1], 200, 'lamp_post', 0x3a3a4a, 0xfff0a0, { light: true }),
   D('lantern_pole', 'Lanterne rustique', '🏮', 'lights', [1, 1], 120, 'lantern', 0x8a5a3a, 0xffc06a, { light: true }),
   D('string_lights', 'Guirlande lumineuse', '💡', 'lights', [2, 1], 220, 'string_lights', 0x8a5a3a, 0xfff0a0, { light: true, blocks: false }),
+  D('lantern_blue', 'Lanterne bleue', '🏮', 'lights', [1, 1], 0, 'lantern', 0x4a6a9a, 0x9ad8ff, { light: true }),
   D('torch', 'Torche de jardin', '🔥', 'lights', [1, 1], 80, 'torch', 0x8a5a3a, 0xff9a3a, { light: true }),
   // magic
   D('crystal_lamp', 'Lampe de cristal', '💎', 'magic', [1, 1], 0, 'crystal', 0x9ae8ff, 0xd8a8ff, { light: true, gems: 15 }),
@@ -108,6 +112,7 @@ export const DECOR: DecorDef[] = [
   D('rainbow_arch', 'Arche arc-en-ciel', '🌈', 'colorful', [3, 1], 0, 'rainbow', 0xff6a6a, 0x6a8aff, { gems: 40, blocks: false }),
   D('balloons', 'Ballons', '🎈', 'colorful', [1, 1], 80, 'balloons', 0xff6a8a, 0x6ad8ff),
   D('flag_garland', 'Fanions', '🎏', 'colorful', [2, 1], 100, 'flags', 0xffd03a, 0xff6a8a, { blocks: false }),
+  D('hamlet_banner', 'Bannière du hameau', '🚩', 'colorful', [2, 1], 0, 'flags', 0x5a8ad8, 0xffd03a, { blocks: false }),
   D('pinwheel', 'Moulinet coloré', '🎡', 'colorful', [1, 1], 60, 'pinwheel', 0xff6a8a, 0x6ad8ff),
   D('candy_lamp', 'Lampe bonbon', '🍭', 'colorful', [1, 1], 0, 'candy_lamp', 0xff8ad8, 0xffffff, { light: true, tokens: 8 }),
 

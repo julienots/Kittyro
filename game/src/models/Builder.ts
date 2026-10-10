@@ -12,7 +12,11 @@ export interface PartOpts {
   pos?: Vec3;
   rot?: Vec3;
   scale?: Vec3;
+  /** Procedural surface pattern (see TEX), rendered by materials created with `textured`. */
+  tex?: number;
 }
+
+export { TEX } from './tex';
 
 const tmpColor = new THREE.Color();
 
@@ -59,6 +63,8 @@ const s = new THREE.Vector3();
 
 export class ModelBuilder {
   parts: THREE.BufferGeometry[] = [];
+  /** Default pattern for parts that don't specify one. */
+  tex = 0;
 
   private push(g: THREE.BufferGeometry, color: number | [number, number], o: PartOpts = {}): this {
     if (!g.index) {
@@ -69,6 +75,7 @@ export class ModelBuilder {
       g.setIndex(new THREE.BufferAttribute(idx, 1));
     }
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!g.attributes.aPat || o.tex !== undefined) g.setAttribute('aPat', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(o.tex ?? this.tex), 1));
     if (Array.isArray(color)) gradientize(g, color[0], color[1]);
     else colorize(g, color);
     e.set(...(o.rot ?? [0, 0, 0]));
@@ -78,7 +85,7 @@ export class ModelBuilder {
     m4.compose(v, q, s);
     g.applyMatrix4(m4);
     // drop attributes we don't need so merges stay compatible
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'aPat'].includes(k)) g.deleteAttribute(k);
     this.parts.push(g);
     return this;
   }

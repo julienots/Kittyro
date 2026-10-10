@@ -136,11 +136,11 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: none; }
 .panel.narrow { width: min(460px, 96vw); }
 .panel.wide { width: min(980px, 97vw); }
 @keyframes pop { from { transform: scale(.88); opacity: 0; } }
-.panel-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px 18px; }
+.panel-head { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px 18px; }
 .panel-head h2 { margin: 0; font-size: 22px; flex: 1; }
 .panel-head .x { width: 44px; height: 44px; border-radius: 14px; background: var(--paper); font-size: 22px; box-shadow: 0 3px 0 #e5d5bb; }
-.panel-body { padding: 4px 16px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
-.tabs { display: flex; gap: 6px; padding: 0 14px 8px; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+.panel-body { flex: 1 1 auto; min-height: 0; padding: 4px 16px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.tabs { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 8px; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { padding: 8px 14px; border-radius: 999px; background: var(--cream2); font-weight: 600; font-size: 14px; white-space: nowrap; min-height: 40px; }
 .tab.on { background: var(--sun); box-shadow: 0 3px 0 #e8b04a; }
@@ -253,6 +253,8 @@ textarea.text { font-family: monospace; font-size: 12px; width: 100%; height: 90
   .menu-row .icon-btn { width: 46px; height: 46px; font-size: 22px; }
   .tracker { display: none; }
   .panel-head h2 { font-size: 19px; }
+  .tab { padding: 5px 11px; min-height: 32px; font-size: 13px; }
+  .tabs { gap: 4px; padding-bottom: 6px; }
 }
 @media (max-width: 520px) {
   .hud-top-left { max-width: 52vw; }
@@ -261,3 +263,21 @@ textarea.text { font-family: monospace; font-size: 12px; width: 100%; height: 90
 }
 
 .slot .seedtag { position: absolute; left: 4px; top: 2px; font-size: 16px; }
+
+/* hamlet & guidance */
+.tipbox { background: #eef8ff; border-radius: 14px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; color: var(--ink); }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.stat { background: var(--paper); border-radius: 16px; padding: 8px 10px; display: flex; gap: 8px; align-items: center; box-shadow: 0 3px 0 #ead9be; }
+.stat b { font-size: 17px; }
+.goalcard { background: #fff6dc; border: 3px solid var(--sun); border-radius: 18px; padding: 10px 14px; margin-bottom: 4px; }
+details.howto { margin-top: 12px; background: var(--paper); border-radius: 16px; padding: 8px 12px; font-size: 14px; }
+details.howto summary { font-weight: 600; cursor: pointer; }
+details.howto li { margin: 4px 0; }
+.opt-help { font-size: 12.5px; color: var(--ink2); margin: 4px 2px 8px; line-height: 1.35; }
+.setting-row { display: flex; align-items: center; gap: 10px; }
+.setting-row .val { min-width: 44px; text-align: right; font-weight: 600; font-size: 14px; }
+.tip-card { position: absolute; left: 50%; bottom: calc(150px + var(--safe-b)); transform: translateX(-50%); width: min(520px, 90vw); background: var(--paper); border-radius: 20px; box-shadow: var(--shadow); padding: 12px 14px; z-index: 22; display: flex; gap: 10px; align-items: flex-start; border: 3px solid var(--sky); animation: pop .25s; }
+.tip-card .em { font-size: 28px; }
+.tip-card b { display: block; margin-bottom: 2px; }
+.tip-card p { margin: 0; font-size: 14px; line-height: 1.35; }
+.tip-card button { margin-left: auto; flex-shrink: 0; }

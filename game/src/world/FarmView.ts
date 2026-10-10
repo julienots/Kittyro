@@ -156,7 +156,7 @@ export class FarmView {
       if (bdef) {
         const model = farmBuildingModel(p.kind, bdef.size[0], bdef.size[1], bdef.roof, bdef.wall);
         const g = new THREE.Group();
-        const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true }));
+        const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true, textured: true }));
         m.castShadow = m.receiveShadow = true;
         g.add(m);
         if (model.windows) g.add(new THREE.Mesh(model.windows, windowMat));

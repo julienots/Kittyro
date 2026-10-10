@@ -3,6 +3,7 @@ import { DAY_START, INVENTORY_START, SAVE_VERSION } from '../data/constants';
 import { NPCS } from '../data/npcs';
 import { VILLAGE_BUILDINGS } from '../data/village';
 import { WEAR, wearKey } from '../data/wardrobe';
+import { HAMLET_NAME } from '../data/hamlet';
 
 export const DEFAULT_LOOK: Appearance = {
   skin: 1,
@@ -39,8 +40,8 @@ export const FARM = {
 export function createNewGame(name = 'Sacha', farmName = 'Ferme Moussue', look: Appearance = DEFAULT_LOOK, seed = Date.now()): GameState {
   const now = Date.now();
   const regions = {} as Record<RegionId, RegionState>;
-  for (const id of ['farm', 'village', 'woods', 'mountains', 'coast', 'frosty', 'ember', 'mine', 'house'] as RegionId[]) {
-    regions[id] = region(id === 'farm' || id === 'village' || id === 'house');
+  for (const id of ['farm', 'village', 'woods', 'mountains', 'coast', 'frosty', 'ember', 'mine', 'house', 'hamlet'] as RegionId[]) {
+    regions[id] = region(id === 'farm' || id === 'village' || id === 'house' || id === 'hamlet');
   }
   regions.farm.visited = true;
 
@@ -96,6 +97,7 @@ export function createNewGame(name = 'Sacha', farmName = 'Ferme Moussue', look: 
     animals: [],
     regions,
     village,
+    hamlet: { name: HAMLET_NAME, placed: [], villagers: [], chest: [], coins: 0, carry: {}, level: 1, goals: [], lastDay: 1 },
     npcs,
     quests: { active: [], completedIds: [], storyStep: 0, dailyDay: 0, weeklyWeek: -1, boardDay: 0 },
     collections: { fish: {}, insects: {}, animals: {}, plants: {}, minerals: {}, recipes: {}, furniture: {}, flowers: {}, creatures: {} },

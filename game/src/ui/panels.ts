@@ -23,6 +23,7 @@ import { HOUSE_ROOMS } from '../world/houseLayout';
 import type { Appearance, ToolId } from '../state/types';
 import type { Quality, ControlMode } from '../save/Settings';
 import { CROP_BY_ID } from '../data/crops';
+import { HAMLET_BUILDINGS, HAMLET_BY_ID, HAMLET_GOALS, VILLAGER_TRAITS, type TraitId } from '../data/hamlet';
 
 type Tab = { id: string; label: string };
 function tabs(list: Tab[], cur: string, on: (id: string) => void): HTMLElement {
@@ -39,8 +40,16 @@ function costList(ui: UI, items: [string, number][], coins = 0): HTMLElement {
 
 const currencyIcon = (c: string) => (c === 'coins' ? '🪙' : c === 'gems' ? '💎' : '🎟️');
 
+const PANEL_TIPS: Record<string, [string, string, string]> = {
+  build: ['🔨', 'Construire', 'Choisissez un bâtiment ou une décoration, faites-le glisser du doigt : vert = possible, rouge = impossible. ✓ pour valider.'],
+  inventory: ['🎒', 'Votre sac', 'Touchez un objet pour le manger, l\'équiper ou le ranger. Si le sac est plein, rien n\'est perdu : tout part à la remise.'],
+  collections: ['📖', 'Collections', 'Chaque nouvelle découverte remplit vos albums. Touchez une case grise pour savoir où la trouver.'],
+};
+
 export function openPanel(ui: UI, name: string, ...args: any[]): void {
   const fn = (PANELS as any)[name];
+  const t = PANEL_TIPS[name];
+  if (t) setTimeout(() => ui.tip(`panel_${name}`, t[0], t[1], t[2]), 300);
   if (fn) fn(ui, ...args);
   else console.warn('unknown panel', name);
 }
@@ -78,7 +87,7 @@ function inventory(ui: UI, tab = 'bag'): void {
     if (!owned.length) return [h('p.muted.center', null, 'Aucune décoration. Achetez-en en boutique ou fabriquez-les à l\'atelier !')];
     return [h('div.list', null, ...owned.map(([id, n]) => {
       const d = DECOR_BY_ID[id];
-      const can = (d.indoor ? g.regionId === 'house' : g.regionId === 'farm') || (!d.indoor && g.regionId === 'house' && ['flowers', 'lights', 'magic', 'colorful', 'winter', 'halloween'].includes(d.cat));
+      const can = (d.indoor ? g.regionId === 'house' : g.regionId === 'farm' || g.regionId === 'hamlet') || (!d.indoor && g.regionId === 'house' && ['flowers', 'lights', 'magic', 'colorful', 'winter', 'halloween'].includes(d.cat));
       return h('div.item-row', null, h('span.em', null, d.icon), h('div.info', null, h('b', null, d.name), h('span', null, `×${n} · ${d.indoor ? 'Intérieur' : 'Extérieur'}`)),
         h(`button.btn.small${can ? '' : '.disabled'}`, { onclick: () => { ui.closePanel(); g.enterPlacement(id); } }, 'Placer'));
     }))];
@@ -163,13 +172,13 @@ function map(ui: UI, unlockedNow?: string): void {
   const g = ui.g;
   const st = g.ctx.state;
   const regions = REGIONS.filter((r) => r.id !== 'house');
-  const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember']];
+  const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember'], ['farm', 'hamlet']];
   const svg = `<svg viewBox="0 0 100 62.5" preserveAspectRatio="none">${links.map(([a, b]) => {
     const A = REGION_BY_ID[a as 'farm'].map, B = REGION_BY_ID[b as 'farm'].map;
     const on = st.regions[a as 'farm'].unlocked && st.regions[b as 'farm'].unlocked;
     return `<path d="M${A[0] * 100} ${A[1] * 62.5} Q ${(A[0] + B[0]) * 50 + 4} ${(A[1] + B[1]) * 31.25 - 4} ${B[0] * 100} ${B[1] * 62.5}" stroke="${on ? '#fff8ec' : 'rgba(255,255,255,.35)'}" stroke-width="0.9" stroke-dasharray="2 1.5" fill="none"/>`;
   }).join('')}</svg>`;
-  const colors: Record<string, string> = { farm: '#9fd472', village: '#b8e08a', woods: '#5fae5a', mountains: '#a8b0c0', coast: '#f4e0a8', frosty: '#eef4ff', ember: '#c87a5a', mine: '#8a7a78' };
+  const colors: Record<string, string> = { farm: '#9fd472', village: '#b8e08a', woods: '#5fae5a', mountains: '#a8b0c0', coast: '#f4e0a8', frosty: '#eef4ff', ember: '#c87a5a', mine: '#8a7a78', hamlet: '#c8e07a' };
   const mapEl = h('div.map', { html: svg }, ...regions.map((r) => {
     const unlocked = st.regions[r.id].unlocked;
     const here = g.regionId === r.id || (g.regionId === 'house' && r.id === 'farm');
@@ -285,32 +294,177 @@ function restore(ui: UI, id: string): void {
 }
 
 // ====================================================================== build menu
+function buildingRow(ui: UI, def: { id: string; name: string; icon: string; desc: string; items: [string, number][]; coins: number }, countText: string, aff: { ok: boolean; reason?: string }, extra?: string): HTMLElement {
+  const g = ui.g;
+  return h('div.item-row', null, h('span.em', null, def.icon), h('div.info', null, h('b', null, `${def.name} ${countText}`), h('span', null, def.desc), extra ? h('div', { style: { color: '#4fb886', fontWeight: '600', fontSize: '13px' } }, extra) : null, costList(ui, def.items, def.coins), !aff.ok && aff.reason && !aff.reason.startsWith('Pas assez') && !aff.reason.startsWith('Matériaux') ? h('span', { style: { color: '#e06a5a' } }, `🔒 ${aff.reason}`) : null),
+    h(`button.btn.small${aff.ok ? '' : '.disabled'}`, { onclick: () => { ui.closePanel(); g.enterPlacement(def.id); } }, 'Placer'));
+}
+
 function build(ui: UI, tab = 'buildings'): void {
   const g = ui.g;
-  const inFarm = g.regionId === 'farm', inHouse = g.regionId === 'house';
+  const inFarm = g.regionId === 'farm', inHouse = g.regionId === 'house', inHamlet = g.regionId === 'hamlet';
   const render = (): any[] => {
-    if (!inFarm && !inHouse) return [h('p.center', null, '🏡 La construction se fait sur votre ferme ou dans votre maison.')];
-    const editBtn = h('div.row', { style: { marginBottom: '10px' } }, h('button.btn.small.sky', { onclick: () => { ui.closePanel(); g.enterEditMode(); } }, '✋ Déplacer / ranger des objets'),
-      inHouse ? h('button.btn.small.lav', { onclick: () => houseDecor(ui) }, '🖌️ Murs & sols') : null);
+    if (!inFarm && !inHouse && !inHamlet) return [h('p.center', null, '🏡 La construction se fait sur votre ferme, dans votre maison ou au hameau de Clairefontaine (sentier au sud de la ferme).')];
+    const editBtn = h('div.row', { style: { marginBottom: '10px', flexWrap: 'wrap' } }, h('button.btn.small.sky', { onclick: () => { ui.closePanel(); g.enterEditMode(); } }, '✋ Déplacer / ranger des objets'),
+      inHouse ? h('button.btn.small.lav', { onclick: () => houseDecor(ui) }, '🖌️ Murs & sols') : null,
+      inHamlet ? h('button.btn.small.lav', { onclick: () => hamlet(ui) }, '📒 Registre') : null);
+    const tip = (t: string) => h('div.tipbox', null, '💡 ', t);
+    if (tab === 'buildings' && inHamlet) {
+      const hs = g.ctx.hamlet;
+      const kinds: [string, string][] = [['home', '🏠 Logements — attirent des villageois'], ['work', '⚒️ Lieux de travail — produisent chaque matin'], ['service', '✨ Services — rendent les villageois heureux']];
+      return [editBtn, tip('Placez des logements pour accueillir des villageois, puis des lieux de travail : ils y travaillent seuls et remplissent le coffre du registre chaque matin.'),
+        ...kinds.map(([k, title]) => h('div', null, h('h3', null, title), h('div.list', null, ...HAMLET_BUILDINGS.filter((b) => b.kind === k).map((b) => {
+          const extra = b.beds ? `🛏️ ${b.beds} lit${b.beds > 1 ? 's' : ''}` : b.jobs ? `👷 ${b.jobs} poste${b.jobs > 1 ? 's' : ''}${b.output?.length ? ' · ' + b.output.map((o) => item(o.id).icon).join('') : ''}${b.coinsPerWorker ? ' · 🪙' : ''}` : `✨ Bonheur +${b.appeal}`;
+          return buildingRow(ui, b, `(${hs.count(b.id)}/${b.max})`, g.ctx.building.affordable(b.id), extra);
+        }))))];
+    }
     if (tab === 'buildings' && inFarm) {
-      return [editBtn, h('div.list', null, ...BUILDINGS.filter((b) => b.id !== 'house').map((b) => {
-        const aff = g.ctx.building.affordable(b.id);
-        const count = g.ctx.building.count(b.id);
-        return h('div.item-row', null, h('span.em', null, b.icon), h('div.info', null, h('b', null, `${b.name} (${count}/${b.max})`), h('span', null, b.desc), costList(ui, b.items, b.coins)),
-          h(`button.btn.small${aff.ok ? '' : '.disabled'}`, { onclick: () => { ui.closePanel(); g.enterPlacement(b.id); } }, 'Placer'));
-      }))];
+      return [editBtn, h('div.list', null, ...BUILDINGS.filter((b) => b.id !== 'house').map((b) => buildingRow(ui, b, `(${g.ctx.building.count(b.id)}/${b.max})`, g.ctx.building.affordable(b.id))))];
     }
     const owned = Object.entries(g.ctx.state.decorOwned).filter(([id, n]) => n > 0 && (inHouse ? DECOR_BY_ID[id].indoor || ['flowers', 'lights', 'magic', 'colorful', 'winter', 'halloween'].includes(DECOR_BY_ID[id].cat) : !DECOR_BY_ID[id].indoor));
     const saplings = inFarm ? g.ctx.inventory.slots.filter((s) => s && s.id.startsWith('sapling_')) : [];
     return [editBtn,
+      inHamlet ? tip('Chaque décoration rend Clairefontaine plus beau : les villageois sont plus heureux et de nouveaux arrivent plus vite.') : null,
       owned.length || saplings.length ? h('div.list', null,
         ...saplings.map((s) => h('div.item-row', null, h('span.em', null, '🌳'), h('div.info', null, h('b', null, item(s!.id).name), h('span', null, `×${s!.qty}`)), h('button.btn.small', { onclick: () => { ui.closePanel(); g.enterPlacement(s!.id); } }, 'Planter'))),
         ...owned.map(([id, n]) => h('div.item-row', null, h('span.em', null, DECOR_BY_ID[id].icon), h('div.info', null, h('b', null, DECOR_BY_ID[id].name), h('span', null, `×${n}`)), h('button.btn.small', { onclick: () => { ui.closePanel(); g.enterPlacement(id); } }, 'Placer'))))
         : h('p.muted.center', null, 'Aucune décoration en stock. Achetez-en chez Mallow, Pippa ou Toma, ou fabriquez-en à l\'atelier.'),
     ];
   };
-  const t = inFarm ? tabs([{ id: 'buildings', label: '🏠 Bâtiments' }, { id: 'decor', label: '🌸 Décorations' }], tab, (id) => build(ui, id)) : undefined;
-  ui.showPanel('build', inHouse ? 'Décorer la maison' : 'Construire', render(), { tabs: t });
+  const t = inFarm || inHamlet ? tabs([{ id: 'buildings', label: '🏠 Bâtiments' }, { id: 'decor', label: '🌸 Décorations' }], tab, (id) => build(ui, id)) : undefined;
+  ui.showPanel('build', inHouse ? 'Décorer la maison' : inHamlet ? 'Construire à Clairefontaine' : 'Construire', render(), { tabs: t });
+}
+
+// ====================================================================== hamlet register
+const moodOf = (h0: number) => (h0 >= 70 ? '😊' : h0 >= 40 ? '🙂' : '😟');
+
+function hamlet(ui: UI, tab = 'overview'): void {
+  const g = ui.g;
+  const hs = g.ctx.hamlet;
+  const st = g.ctx.state.hamlet;
+  const inHamlet = g.regionId === 'hamlet';
+  const nameOf = (uid: string | null) => {
+    const p = uid ? st.placed.find((q) => q.uid === uid) : null;
+    return p ? HAMLET_BY_ID[p.kind]?.name ?? '' : '';
+  };
+  const render = (): any[] => {
+    if (tab === 'overview') {
+      const next = hs.nextLevel();
+      const pop = hs.population();
+      const goal = hs.currentGoal();
+      const stat = (icon: string, label: string, value: string) => h('div.stat', null, h('span', { style: { fontSize: '22px' } }, icon), h('div', null, h('b', null, value), h('div.muted', null, label)));
+      return [
+        h('div.row', { style: { alignItems: 'flex-end' } }, h('div.grow', null, h('h3', { style: { margin: '0' } }, `🏘️ ${st.name} — ${hs.levelName()}`), next ? h('div.muted', null, `Prochain niveau « ${next.name} » à ${next.pop} villageois`) : h('div.muted', null, 'Niveau maximum atteint !')), next ? h('b', null, `${pop}/${next.pop}`) : null),
+        next ? h('div.progress', { style: { margin: '6px 0 12px' } }, h('i', { style: { width: `${Math.min(100, (pop / next.pop) * 100)}%` } })) : null,
+        h('div.stats', null,
+          stat('👥', 'Villageois', `${pop}`), stat('🛏️', 'Lits', `${pop}/${hs.beds()}`), stat('👷', 'Postes', `${st.villagers.filter((v) => v.jobUid).length}/${hs.jobSlots()}`),
+          stat(moodOf(hs.avgHappiness()), 'Bonheur', pop ? `${hs.avgHappiness()} %` : '—'), stat('🌸', 'Beauté', `${hs.appeal()}`)),
+        goal ? h('div.goalcard', null, h('b', null, `🎯 Objectif : ${goal.text}`), h('div.muted', null, goal.hint)) : h('div.goalcard', null, h('b', null, '🏆 Tous les objectifs sont accomplis !')),
+        h('h3', null, '🧺 Coffre du hameau'),
+        st.chest.length || st.coins ? h('div', null,
+          h('div.grid', null, ...st.chest.map((c) => h('div.slot', null, item(c.id).icon, h('span.q', null, c.qty))), st.coins ? h('div.slot', null, '🪙', h('span.q', null, fmt(st.coins))) : null),
+          h('div.center', { style: { marginTop: '10px' } }, h('button.btn.peach', { onclick: () => { const r = hs.collect(); g.audio.play('harvest'); ui.toast(`Récupéré : ${r.items.map((i) => `${item(i.id).icon}${i.qty}`).join(' ')}${r.coins ? ` 🪙${fmt(r.coins)}` : ''}`, '🧺', 'good'); ui.setPanelBody(...render()); } }, '🧺 Tout récupérer')))
+          : h('p.muted', null, hs.buildings('work').length ? 'Vide pour le moment : la production arrive chaque matin.' : 'Construisez un lieu de travail : vos villageois y produiront du bois, de la pierre, des récoltes…'),
+        h('details.howto', null, h('summary', null, '❓ Comment fonctionne le hameau ?'), h('ul', null,
+          h('li', null, '🏠 Chaque logement libre attire un nouveau villageois au lever du jour (si le hameau est heureux).'),
+          h('li', null, '⚒️ Les villageois prennent seuls les postes libres. Changez leur métier en leur parlant (💼 Travail).'),
+          h('li', null, '🧺 Chaque matin, leur travail remplit ce coffre. Plus ils sont heureux, plus ils produisent.'),
+          h('li', null, '😊 Le bonheur vient d\'un logement, d\'un travail, du puits, de la taverne, et de la beauté (décorations, fleurs, lanternes).'),
+          h('li', null, '💭 Une bulle au-dessus d\'un villageois = un souhait. Exaucez-le pour des pièces, des gemmes et de l\'amitié.'),
+          h('li', null, '🔑 Les matériaux du hameau (poutres, pierre taillée, chaume) se fabriquent à l\'atelier ou sortent de la scierie, de la carrière et des champs.'),
+        )),
+        inHamlet ? h('div.center', { style: { marginTop: '10px' } }, h('button.btn.small', { onclick: () => build(ui) }, '🔨 Construire')) : h('p.muted.center', null, 'Clairefontaine se trouve au sud de votre ferme.'),
+      ];
+    }
+    if (tab === 'villagers') {
+      if (!st.villagers.length) return [h('p.muted.center', null, 'Personne n\'habite encore ici. Construisez une cabane : un voyageur s\'y installera !')];
+      return [h('div.list', null, ...st.villagers.map((v) => {
+        const tr = VILLAGER_TRAITS[v.trait as TraitId];
+        return h('div.item-row', null, h('span.em', null, moodOf(v.happiness)), h('div.info', null,
+          h('b', null, `${v.name} ${tr ? tr.icon : ''}`),
+          h('span', null, `${tr?.name ?? ''} · ${v.homeUid ? `🏠 ${nameOf(v.homeUid)}` : '🏕️ sans logis'} · ${v.jobUid ? `💼 ${nameOf(v.jobUid)}` : '💤 sans emploi'}`),
+          h('span', null, `Bonheur ${v.happiness} % · Amitié ${'❤️'.repeat(Math.round(v.friendship / 20)) || '—'}${v.wish ? ` · 💭 ${item(v.wish.id).icon}×${v.wish.qty}` : ''}`)),
+          h('button.btn.small.lav', { onclick: () => villager(ui, v.uid) }, '💼'));
+      }))];
+    }
+    if (tab === 'goals') {
+      return [h('div.list', null, ...HAMLET_GOALS.map((gl) => {
+        const done = st.goals.includes(gl.id);
+        const cur = hs.currentGoal()?.id === gl.id;
+        const r = gl.reward;
+        const rew = [r.coins ? `🪙 ${r.coins}` : '', r.gems ? `💎 ${r.gems}` : '', ...(r.items ?? []).map(([id, q]) => `${DECOR_BY_ID[id]?.icon ?? item(id).icon}×${q}`)].filter(Boolean).join('  ');
+        return h(`div.quest${cur ? '.story' : ''}`, { style: done ? { opacity: '.6' } : {} }, h('h3', null, `${done ? '✓' : cur ? '🎯' : '•'} ${gl.text}`), cur ? h('div.muted', null, gl.hint) : null, h('div.rewards', null, `Récompense : ${rew}`));
+      }))];
+    }
+    return [];
+  };
+  const t = tabs([{ id: 'overview', label: '📒 Aperçu' }, { id: 'villagers', label: `👥 Villageois (${st.villagers.length})` }, { id: 'goals', label: '🎯 Objectifs' }], tab, (id) => hamlet(ui, id));
+  ui.showPanel('hamlet', `Registre de ${st.name}`, render(), { tabs: t });
+}
+
+function hamletBuilding(ui: UI, uid: string): void {
+  const g = ui.g;
+  const hs = g.ctx.hamlet;
+  const p = g.ctx.state.hamlet.placed.find((q) => q.uid === uid);
+  if (!p) return;
+  const def = HAMLET_BY_ID[p.kind];
+  const render = (): any[] => {
+    const ws = hs.workers(uid);
+    const others = g.ctx.state.hamlet.villagers.filter((v) => v.jobUid !== uid);
+    const season = g.ctx.state.time.day;
+    void season;
+    return [
+      h('p.muted', null, def.desc),
+      def.output?.length ? h('div.detail', null, h('span.em', null, def.icon), h('div', null, h('b', null, 'Production par ouvrier heureux et par jour'), h('div.muted', null, def.output.map((o) => `${item(o.id).icon} ${o.qty}${o.season ? ` (${o.season.map((x) => ({ spring: 'printemps', summer: 'été', autumn: 'automne', winter: 'hiver' } as any)[x]).join('/')})` : ''}`).join(' · ') + (def.coinsPerWorker ? ` · 🪙 ${def.coinsPerWorker}` : '')))) : null,
+      h('h3', null, `👷 ${def.job ?? 'Ouvriers'} (${ws.length}/${def.jobs})`),
+      ws.length ? h('div.list', null, ...ws.map((v) => h('div.item-row', null, h('span.em', null, moodOf(v.happiness)), h('div.info', null, h('b', null, v.name), h('span', null, `Bonheur ${v.happiness} %`)), h('button.btn.small.ghost', { onclick: () => { hs.setJob(v.uid, null); ui.setPanelBody(...render()); } }, 'Retirer'))))
+        : h('p.muted', null, 'Personne ne travaille ici.'),
+      ws.length < (def.jobs ?? 0) && others.length ? h('div', null, h('h3', null, 'Embaucher'), h('div.row', { style: { flexWrap: 'wrap' } }, ...others.map((v) => h('button.chip', { onclick: () => { hs.setJob(v.uid, uid); g.audio.play('click'); ui.setPanelBody(...render()); } }, `${v.name}${v.jobUid ? ` (${HAMLET_BY_ID[g.ctx.state.hamlet.placed.find((q) => q.uid === v.jobUid)?.kind ?? '']?.name ?? ''})` : ' 💤'}`)))) : null,
+    ];
+  };
+  ui.showPanel('hamletBuilding', `${def.icon} ${def.name}`, render(), { size: 'narrow' });
+}
+
+function villager(ui: UI, uid: string): void {
+  const g = ui.g;
+  const hs = g.ctx.hamlet;
+  const v = hs.villager(uid);
+  if (!v) return;
+  const render = (): any[] => {
+    const tr = VILLAGER_TRAITS[v.trait as TraitId];
+    const works = hs.buildings('work');
+    const bar = (label: string, val: number) => h('div', null, h('div.muted', null, label), h('div.progress', null, h('i', { style: { width: `${val}%` } })));
+    return [
+      h('p.muted', null, `${tr?.icon ?? ''} ${tr?.name ?? ''} · arrivé·e le jour ${v.arrivedDay}`),
+      bar(`${moodOf(v.happiness)} Bonheur ${v.happiness} % (objectif ${hs.targetHappiness(v)} %)`, v.happiness), bar('❤️ Amitié', v.friendship),
+      v.wish ? h('div.detail', null, h('span.em', null, item(v.wish.id).icon), h('div', null, h('b', null, `Souhait : ${v.wish.qty}× ${item(v.wish.id).name}`), h('div.muted', null, `Vous en avez ${g.ctx.inventory.count(v.wish.id)}. Parlez-lui pour lui donner.`))) : null,
+      h('h3', null, '💼 Métier'),
+      works.length ? h('div.list', null, ...works.map((p) => {
+        const def = HAMLET_BY_ID[p.kind];
+        const n = hs.workers(p.uid).length;
+        const mine = v.jobUid === p.uid;
+        return h('div.item-row', null, h('span.em', null, def.icon), h('div.info', null, h('b', null, def.name), h('span', null, `${def.job} · ${n}/${def.jobs}`)),
+          mine ? h('button.btn.small.ghost', { onclick: () => { hs.setJob(v.uid, null); ui.setPanelBody(...render()); } }, 'Quitter') : h(`button.btn.small${n < (def.jobs ?? 0) ? '' : '.disabled'}`, { onclick: () => { if (hs.setJob(v.uid, p.uid)) { g.audio.play('click'); ui.toast(`${v.name} devient ${def.job?.toLowerCase()}`, def.icon, 'good'); ui.setPanelBody(...render()); } } }, 'Choisir'));
+      })) : h('p.muted', null, 'Aucun lieu de travail. Construisez une scierie, une carrière, des champs…'),
+    ];
+  };
+  ui.showPanel('villager', `${v.name}`, render(), { size: 'narrow' });
+}
+
+function villagerGift(ui: UI, uid: string): void {
+  const g = ui.g;
+  const v = g.ctx.hamlet.villager(uid);
+  if (!v) return;
+  const tr = VILLAGER_TRAITS[v.trait as TraitId];
+  const stacks = g.ctx.inventory.slots.filter((s): s is { id: string; qty: number } => !!s);
+  ui.showPanel('villagerGift', `Offrir à ${v.name}`, [
+    h('p.muted', null, `${tr?.icon ?? ''} ${tr?.name ?? ''} — adore par exemple : ${tr ? tr.wishes.slice(0, 3).map((i) => item(i).icon).join(' ') : ''}`),
+    h('div.grid', null, ...stacks.map((s) => h('button.slot', { onclick: () => {
+      const r = g.ctx.hamlet.gift(uid, s.id);
+      ui.closePanel();
+      if (r.ok) { g.audio.play(r.loved ? 'levelup' : 'pop'); ui.toast(r.loved ? `${v.name} adore ce cadeau ! ❤️❤️` : `${v.name} vous remercie ❤️`, '🎁', 'good'); }
+    } }, item(s.id).icon, h('span.q', null, s.qty)))),
+  ], { size: 'narrow' });
 }
 
 function houseDecor(ui: UI, room = 'bedroom'): void {
@@ -506,6 +660,18 @@ function wardrobe(ui: UI): void {
 }
 
 // ====================================================================== settings
+const QUALITY_HELP: Record<Quality, string> = {
+  low: 'Pour les petits téléphones : pas d\'ombres, moins d\'herbe et d\'effets. Le plus fluide et le plus économe en batterie.',
+  medium: 'Équilibré : ombres douces, herbe et particules modérées. Recommandé pour la plupart des téléphones.',
+  high: 'Ombres plus fines, plus d\'herbe, effet miniature (flou de profondeur). Pour les téléphones récents et les tablettes.',
+  ultra: 'Tout au maximum : ombres très détaillées et pleine résolution. Pour PC ou téléphones très puissants.',
+};
+const CONTROL_HELP: Record<ControlMode, string> = {
+  both: 'Glissez le pouce gauche pour marcher (joystick qui apparaît sous le doigt) ET touchez un endroit ou un objet pour y aller automatiquement.',
+  joystick: 'Uniquement le joystick : toucher l\'écran ne déplace pas le personnage (évite les déplacements involontaires).',
+  tap: 'Uniquement toucher-pour-aller : touchez le sol pour marcher, touchez un objet ou un habitant pour interagir. Idéal à une main.',
+};
+
 function settings(ui: UI): void {
   const g = ui.g;
   const s = g.settings;
@@ -515,37 +681,101 @@ function settings(ui: UI): void {
     g.saveSettings();
     settings(ui);
   };
+  const help = (t: string) => h('div.opt-help', null, t);
   const chips = <T extends string>(list: [T, string][], cur: T, on: (v: T) => void) => h('div.row', { style: { flexWrap: 'wrap' } }, ...list.map(([v, l]) => h(`button.chip${v === cur ? '.on' : ''}`, { onclick: () => on(v) }, l)));
-  const slider = (k: 'music' | 'sfx' | 'ambience') => h('input.slider', { type: 'range', min: 0, max: 1, step: 0.05, value: s[k], oninput: (e: Event) => { s[k] = +(e.target as HTMLInputElement).value; g.saveSettings(); } });
-  let code = '';
+  const toggle = (k: 'leftHanded' | 'haptics' | 'autoQuality' | 'showFps' | 'tips', label: string, text: string) => h('div', null,
+    h('div.row', null, h(`button.chip${s[k] ? '.on' : ''}`, { onclick: () => set(k, !s[k]) }, `${s[k] ? '✓' : '○'} ${label}`), h('span.muted', null, s[k] ? 'Activé' : 'Désactivé')),
+    help(text));
+  const slider = (k: 'music' | 'sfx' | 'ambience', label: string, text: string) => {
+    const val = h('span.val', null, `${Math.round(s[k] * 100)} %`);
+    return h('div', null,
+      h('div.muted', null, label),
+      h('div.setting-row', null, h('input.slider', { type: 'range', min: 0, max: 1, step: 0.05, value: s[k], oninput: (e: Event) => { s[k] = +(e.target as HTMLInputElement).value; val.textContent = `${Math.round(s[k] * 100)} %`; g.saveSettings(); } }), val),
+      help(text));
+  };
   const ta = h('textarea.text', { placeholder: 'Collez un code de sauvegarde ici pour l\'importer…' }) as HTMLTextAreaElement;
   ui.showPanel('settings', 'Menu', [
     h('div.row', { style: { flexWrap: 'wrap', marginBottom: '8px' } },
+      h('button.btn.small', { onclick: () => guide(ui) }, '📖 Guide du jeu'),
       h('button.btn.small.peach', { onclick: () => wardrobe(ui) }, '👗 Garde-robe'),
       h('button.btn.small.lav', { onclick: () => pass(ui) }, '🎟️ Cozy Pass'),
       h('button.btn.small.sky', { onclick: () => friends(ui) }, '🙂 Habitants'),
       h('button.btn.small', { onclick: () => shop(ui, 'boutique') }, '🛍️ Boutique'),
       h('button.btn.small.ghost', { onclick: () => festivalsInfo(ui) }, '🎉 Fêtes'),
+      h('button.btn.small.ghost', { onclick: () => hamlet(ui) }, '🏘️ Hameau'),
     ),
     h('h3', null, '🎮 Contrôles'),
     chips<ControlMode>([['both', 'Joystick + toucher'], ['joystick', 'Joystick'], ['tap', 'Toucher pour aller']], s.controls, (v) => set('controls', v)),
-    h('div.row', { style: { marginTop: '6px' } }, h(`button.chip${s.leftHanded ? '.on' : ''}`, { onclick: () => set('leftHanded', !s.leftHanded) }, '🫲 Mode gaucher'), h(`button.chip${s.haptics ? '.on' : ''}`, { onclick: () => set('haptics', !s.haptics) }, '📳 Vibrations')),
+    help(CONTROL_HELP[s.controls]),
+    toggle('leftHanded', '🫲 Mode gaucher', 'Place le bouton d\'action et les outils à gauche de l\'écran (le joystick passe à droite).'),
+    toggle('haptics', '📳 Vibrations', 'Petite vibration quand vous coupez, minez ou récoltez (si votre téléphone le permet).'),
+    toggle('tips', '💡 Astuces', 'Affiche des conseils la première fois que vous découvrez une fonctionnalité (hameau, construction, nuit…).'),
+    s.tips ? null : h('button.btn.small.ghost', { onclick: () => { st.flags.tips = []; ui.toast('Les astuces réapparaîtront', '💡'); } }, '↺ Revoir toutes les astuces'),
     h('h3', null, '✨ Qualité graphique'),
-    chips<Quality>([['low', 'LOW'], ['medium', 'MEDIUM'], ['high', 'HIGH'], ['ultra', 'ULTRA']], s.quality, (v) => set('quality', v)),
-    h('div.row', { style: { marginTop: '6px' } }, h(`button.chip${s.autoQuality ? '.on' : ''}`, { onclick: () => set('autoQuality', !s.autoQuality) }, '⚡ Résolution adaptative'), h(`button.chip${s.showFps ? '.on' : ''}`, { onclick: () => set('showFps', !s.showFps) }, '📈 Afficher FPS')),
+    chips<Quality>([['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['ultra', 'Ultra']], s.quality, (v) => set('quality', v)),
+    help(QUALITY_HELP[s.quality]),
+    toggle('autoQuality', '⚡ Résolution adaptative', 'Baisse un peu la netteté automatiquement si le jeu ralentit, pour garder un mouvement fluide. Conseillé sur téléphone.'),
+    toggle('showFps', '📈 Afficher les FPS', 'Affiche les images par seconde en bas de l\'écran (utile pour choisir la qualité : visez 30 ou plus).'),
     h('h3', null, '🎵 Son'),
-    h('div.col', null, h('span.muted', null, 'Musique'), slider('music'), h('span.muted', null, 'Effets'), slider('sfx'), h('span.muted', null, 'Ambiance'), slider('ambience')),
+    slider('music', '🎼 Musique', 'Les mélodies qui changent selon la région, la météo et l\'heure.'),
+    slider('sfx', '🔔 Effets', 'Outils, récoltes, pièces, menus…'),
+    slider('ambience', '🌿 Ambiance', 'Vent, rivière, pluie, oiseaux et grillons.'),
     h('h3', null, '💾 Sauvegarde'),
-    h('p.muted', null, `${st.player.name} · ${st.player.farmName} · Jour ${st.time.day} · ${Math.floor(st.playSeconds / 60)} min de jeu. Sauvegarde automatique activée.`),
+    h('p.muted', null, `${st.player.name} · ${st.player.farmName} · Jour ${st.time.day} · ${Math.floor(st.playSeconds / 60)} min de jeu.`),
+    help('Le jeu se sauvegarde tout seul toutes les 40 secondes, chaque matin et quand vous quittez l\'application. « Exporter » crée un code texte à garder précieusement (pour changer de téléphone) ; « Importer » le recharge.'),
     h('div.row', { style: { flexWrap: 'wrap' } },
       h('button.btn.small', { onclick: async () => { const ok = await g.save(); ui.toast(ok ? 'Partie sauvegardée' : 'Échec de la sauvegarde', ok ? '💾' : '⚠️', ok ? 'good' : 'warn'); } }, '💾 Sauvegarder'),
-      h('button.btn.small.ghost', { onclick: () => { code = g.exportSave(); ta.value = code; ta.select(); try { navigator.clipboard?.writeText(code); ui.toast('Code copié', '📋'); } catch { /* ignore */ } } }, '📤 Exporter'),
+      h('button.btn.small.ghost', { onclick: () => { const code = g.exportSave(); ta.value = code; ta.select(); try { navigator.clipboard?.writeText(code); ui.toast('Code copié', '📋'); } catch { /* ignore */ } } }, '📤 Exporter'),
       h('button.btn.small.ghost', { onclick: async () => { if (await g.importSave(ta.value)) { ui.closePanel(); ui.toast('Sauvegarde importée', '📥', 'good'); } else ui.toast('Code invalide', '⚠️', 'warn'); } }, '📥 Importer'),
     ),
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.1 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
+}
+
+// ====================================================================== game guide
+const GUIDE: { id: string; label: string; body: [string, string][] }[] = [
+  { id: 'start', label: '🌱 Bien débuter', body: [
+    ['🕹️ Se déplacer', 'Glissez le pouce sur la moitié gauche de l\'écran (ou touchez un endroit). Au clavier : ZQSD / WASD / flèches.'],
+    ['✋ Le gros bouton', 'Il change selon ce qui est devant vous : parler, récolter, couper, miner, pêcher, entrer… Il choisit même le bon outil tout seul.'],
+    ['🛠️ Le petit bouton', 'Utilise l\'outil équipé (houe, arrosoir…). Appui long = roue des outils.'],
+    ['📜 La quête en haut à gauche', 'Elle vous guide pas à pas. Touchez-la pour voir toutes vos quêtes et réclamer vos récompenses.'],
+    ['😴 Pas de stress', 'Rien ne meurt, rien ne se perd. Si vous veillez trop tard, vous vous réveillez simplement chez vous.'],
+  ] },
+  { id: 'farm', label: '🥕 Ferme', body: [
+    ['1. Labourer', 'Équipez la houe et utilisez-la sur l\'herbe de la ferme.'],
+    ['2. Planter', 'Le bouton 🌱 choisit la graine ; le gros bouton plante devant vous.'],
+    ['3. Arroser', 'Chaque jour (sauf s\'il pleut). Remplissez l\'arrosoir à la rivière.'],
+    ['4. Récolter & vendre', 'Récoltez avec le gros bouton, vendez dans la caisse d\'expédition 📦 près de la maison.'],
+    ['🐔 Animaux', 'Construisez un poulailler ou une étable (🔨), puis adoptez chez Hazel au village. Nourrissez-les et câlinez-les.'],
+  ] },
+  { id: 'village', label: '🏘️ Willowbrook', body: [
+    ['🔨 Restaurer', 'Approchez-vous d\'une ruine et apportez les matériaux demandés : chaque bâtiment débloque une boutique ou une fonction.'],
+    ['🍃 Amitié', 'Parlez aux habitants chaque jour et offrez-leur ce qu\'ils aiment. Les amitiés débloquent recettes et cadeaux.'],
+    ['📋 Tableau', 'Le tableau des demandes propose des petites missions bien payées.'],
+  ] },
+  { id: 'hamlet', label: '🏕️ Hameau', body: [
+    ['📍 Où ?', 'Prenez le sentier au sud de votre ferme : la clairière de Clairefontaine vous attend.'],
+    ['🏠 Logements', 'Chaque cabane, chaumière ou maison attire un villageois au lever du jour (le tout premier arrive tout de suite !).'],
+    ['⚒️ Travail', 'Scierie, carrière, champs, pêche, fournil… Vos villageois y travaillent seuls et remplissent le coffre du registre 📒 chaque matin.'],
+    ['😊 Bonheur', 'Logement + travail + puits + taverne + décorations = villageois heureux, plus productifs, et de nouveaux arrivants.'],
+    ['💭 Souhaits', 'Une bulle au-dessus d\'un villageois ? Apportez-lui ce qu\'il demande pour des pièces, des gemmes et son amitié.'],
+    ['🎯 Objectifs', 'Le registre affiche toujours votre prochain objectif, avec une récompense à la clé.'],
+  ] },
+  { id: 'explore', label: '🧭 Exploration', body: [
+    ['🗺️ Carte', 'Bouton 🗺️ : voyagez entre les régions débloquées. Les régions verrouillées indiquent comment les ouvrir.'],
+    ['🔍 Créatures', 'Approchez-vous LENTEMENT des petites créatures (sans courir) puis observez-les pour remplir le bestiaire 📖.'],
+    ['🎣 Pêche', 'Face à l\'eau, lancez ; quand ❗ apparaît, maintenez le bouton pour garder le poisson dans la zone verte.'],
+    ['⛏️ Mines', 'Dans les Crystal Mountains. Cassez les rochers pour trouver l\'échelle vers l\'étage suivant.'],
+  ] },
+];
+
+function guide(ui: UI, tab = 'start'): void {
+  const sec = GUIDE.find((x) => x.id === tab) ?? GUIDE[0];
+  const t = tabs(GUIDE.map((x) => ({ id: x.id, label: x.label })), sec.id, (id) => guide(ui, id));
+  ui.showPanel('guide', 'Guide du jeu', [h('div.list', null, ...sec.body.map(([title, text]) => h('div.item-row', null, h('div.info', null, h('b', null, title), h('span', null, text)))))], { tabs: t });
 }
 
 function festivalsInfo(ui: UI): void {
@@ -558,19 +788,20 @@ function festivalsInfo(ui: UI): void {
   ]);
 }
 
-function daySummary(ui: UI, data: { day: number; earned: number; weather: string; forecast: string; passedOut: boolean; fest?: string }): void {
+function daySummary(ui: UI, data: { day: number; earned: number; weather: string; forecast: string; passedOut: boolean; fest?: string; hamlet?: string }): void {
   ui.showPanel('summary', `Jour ${data.day}`, h('div.center', null,
     h('div', { style: { fontSize: '60px' } }, data.passedOut ? '😴' : '🌅'),
     h('p', null, data.passedOut ? 'Vous vous êtes endormi(e) tard... Rien de grave, une bonne nuit et c\'est reparti !' : 'Une nouvelle journée commence à Green Valley.'),
     data.earned ? h('p', null, `Gains d'hier : 🪙 ${fmt(data.earned)}`) : null,
     h('p', null, `Météo du jour : ${data.weather} · Demain : ${data.forecast}`),
     data.fest ? h('p', { style: { fontWeight: '600', color: '#e06a8a' } }, data.fest) : null,
-    h('button.btn', { onclick: () => ui.closePanel() }, 'C\'est parti !'),
+    data.hamlet ? h('div.detail', { style: { textAlign: 'left' } }, h('span.em', null, '🏘️'), h('div', null, h('b', null, 'Production de Clairefontaine'), h('div.muted', null, `${data.hamlet} — à récupérer au registre 📒`))) : null,
+    h('button.btn', { style: { marginTop: '10px' }, onclick: () => ui.closePanel() }, 'C\'est parti !'),
   ), { size: 'narrow' });
 }
 
 export const PANELS = {
-  inventory, quests, collections, map, shop, sell, craft, restore, build, houseDecor, upgrades, seeds, gift, friends, animal, elevator, pass, wardrobe, settings, festivalsInfo, daySummary,
+  inventory, quests, collections, map, shop, sell, craft, restore, build, houseDecor, guide, hamlet, hamletBuilding, villager, villagerGift, upgrades, seeds, gift, friends, animal, elevator, pass, wardrobe, settings, festivalsInfo, daySummary,
 };
 export { BUILDING_BY_ID, DECOR, TOOL_BY_ID };
 export type { ToolId };

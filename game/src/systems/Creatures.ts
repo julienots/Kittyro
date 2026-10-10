@@ -13,7 +13,7 @@ export class CreatureSystem {
     const season = seasonOfDay(st.time.day);
     const rainbow = st.weather.rainbowUntil > st.absMinute;
     return CREATURES.filter((c) => {
-      if (!c.regions.includes(region)) return false;
+      if (!c.regions.includes(region === 'hamlet' ? 'farm' : region)) return false;
       if (c.seasons !== 'all' && !c.seasons.includes(season)) return false;
       if (!timeMatches(c.time, st.time.minute)) return false;
       if (c.id === 'rainbowkin') return rainbow;
@@ -55,7 +55,7 @@ export class CreatureSystem {
     const season = seasonOfDay(st.time.day);
     const raining = st.weather.current === 'rain';
     return INSECTS.filter((i) => {
-      if (!i.regions.includes(region)) return false;
+      if (!i.regions.includes(region === 'hamlet' ? 'farm' : region)) return false;
       if (i.seasons !== 'all' && !i.seasons.includes(season)) return false;
       if (!timeMatches(i.time, st.time.minute)) return false;
       if (i.rain && !raining && !this.ctx.rng.chance(0.3)) return false;

@@ -16,7 +16,9 @@ import { Random, rng } from '../core/Random';
 import { isNight } from '../data/constants';
 import { FARM } from '../state/newGame';
 import { footprintOf } from '../systems/Building';
-import type { AnimalState } from '../state/types';
+import type { AnimalState, VillagerState } from '../state/types';
+import { HAMLET_BY_ID } from '../data/hamlet';
+import { VILLAGE_BUILDINGS } from '../data/village';
 
 /** Shared path-following mover for NPCs and animals. */
 class Mover {
@@ -468,10 +470,46 @@ function makeCritter(id: string): THREE.Object3D {
   return g;
 }
 
+// ---------------------------------------------------------------- Villagers (hamlet) & passers-by (Willowbrook)
+const PASSERBY_LINES = [
+  'Bonjour ! Belle journée, n\'est-ce pas ?', 'Je vais au marché, il paraît que les tomates sont superbes.', 'Le village change à vue d\'œil grâce à toi !',
+  'Tu as vu ? La fontaine coule de nouveau.', 'Je promène mes pensées… et mes pieds.', 'Il paraît qu\'un hameau se construit au sud de ta ferme !',
+  'Mes enfants adorent les lucioles du soir.', 'J\'ai croisé un Moussinet près du ruisseau ce matin !',
+];
+
+export class VillagerAgent extends NpcAgent {
+  goal = '';
+  inside = false;
+  private wanderT = Math.random() * 6;
+  line = '';
+
+  constructor(world: World, public data: VillagerState | null, look: VillagerState['look'], name: string, role: string, outline: boolean) {
+    super(world, { id: data ? `v:${data.uid}` : `p:${name}`, name, role, desc: '', look, scale: 0.86 + ((name.length * 7) % 10) / 60, loves: [], likes: [], dislikes: [], schedule: [], lines: [], rain: '', night: '', winter: '' } as NpcDef, outline);
+    this.speed = 1.4 + Math.random() * 0.4;
+    this.line = PASSERBY_LINES[(name.length * 3) % PASSERBY_LINES.length];
+  }
+
+  setInside(v: boolean): void {
+    this.inside = v;
+    this.rig.root.visible = !v;
+    if (this.bubble) this.bubble.visible = !v;
+  }
+
+  /** Small idle wander around the current goal. */
+  idle(dt: number, cx: number, cz: number, r: number, rng: Random): void {
+    this.wanderT -= dt;
+    if (this.wanderT > 0 || this.path.length) return;
+    this.wanderT = 5 + Math.random() * 8;
+    const p = this.world.randomWalkable(cx, cz, r, rng);
+    if (p) this.goTo(p.x, p.z);
+  }
+}
+
 // ---------------------------------------------------------------- Manager
 export class EntityManager {
   readonly group = new THREE.Group();
   npcs: NpcAgent[] = [];
+  villagers: VillagerAgent[] = [];
   animals: AnimalAgent[] = [];
   wild: WildAgent[] = [];
   private spawnT = 8;
@@ -487,8 +525,10 @@ export class EntityManager {
   clear(): void {
     for (const a of this.animals) a.dispose();
     for (const n of this.npcs) n.bubble?.removeFromParent();
+    for (const n of this.villagers) n.bubble?.removeFromParent();
     this.group.clear();
     this.npcs = [];
+    this.villagers = [];
     this.animals = [];
     this.wild = [];
   }
@@ -512,6 +552,8 @@ export class EntityManager {
       this.npcs.push(n);
       this.group.add(n.rig.root);
     }
+    if (region === 'hamlet') this.syncVillagers(true);
+    if (region === 'village') this.spawnPassersby();
     if (region === 'farm') {
       for (const data of st.animals) {
         const ag = new AnimalAgent(this.world, data, this.outline, this.particles, this.ctx);
@@ -596,6 +638,126 @@ export class EntityManager {
     }
   }
 
+  // ------------------------------------------------ hamlet villagers
+  /** Make the agents match the hamlet's villagers (newcomers walk in from the trail). */
+  syncVillagers(initial = false): void {
+    if (this.world.region !== 'hamlet') return;
+    const st = this.ctx.state.hamlet;
+    for (const v of this.villagers.filter((a) => a.data && !st.villagers.some((x) => x.uid === a.data!.uid))) {
+      v.rig.root.removeFromParent();
+      v.bubble?.removeFromParent();
+    }
+    this.villagers = this.villagers.filter((a) => !a.data || st.villagers.some((x) => x.uid === a.data!.uid));
+    for (const data of st.villagers) {
+      if (this.villagers.some((a) => a.data?.uid === data.uid)) continue;
+      const ag = new VillagerAgent(this.world, data, data.look, data.name, '', this.outline);
+      const goal = this.villagerGoal(ag);
+      const entry = this.world.layout.anchors.farm_entry;
+      const start = initial ? this.world.randomWalkable(goal.x, goal.z, 1.5, this.r) ?? goal : entry;
+      ag.pos.set(start.x, 0, start.z);
+      ag.goal = initial ? goal.key : '';
+      if (initial && goal.inside) ag.setInside(true);
+      this.villagers.push(ag);
+      this.group.add(ag.rig.root);
+      if (!initial) this.particles.sparkle(ag.pos.x, 1, ag.pos.z);
+    }
+  }
+
+  /** Where a villager wants to be right now (home / work / tavern / plaza). */
+  private villagerGoal(ag: VillagerAgent): { key: string; x: number; z: number; inside: boolean; wander: number } {
+    const st = this.ctx.state;
+    const m = st.time.minute;
+    const v = ag.data!;
+    const placed = st.hamlet.placed;
+    const doorOf = (uid: string | null) => {
+      const p = uid ? placed.find((q) => q.uid === uid) : null;
+      if (!p) return null;
+      const fp = footprintOf(p.kind, p.x, p.z, p.rot);
+      return { x: (fp.x0 + fp.x1) / 2, z: fp.z1 + 0.6 };
+    };
+    const plaza = this.world.layout.anchors.plaza;
+    const home = doorOf(v.homeUid);
+    const raining = st.weather.current === 'rain' || st.weather.current === 'storm';
+    if (m < 7 * 60 || m >= 21 * 60 || (raining && !v.jobUid && m >= 9 * 60)) {
+      if (home) return { key: `home:${v.homeUid}`, ...home, inside: true, wander: 0 };
+      const t = this.world.layout.anchors.register;
+      return { key: 'camp', x: t.x - 2.5, z: t.z + 2.5, inside: false, wander: 1 };
+    }
+    if (m < 17.5 * 60) {
+      const work = doorOf(v.jobUid);
+      if (work) return { key: `work:${v.jobUid}`, ...work, inside: false, wander: 1.4 };
+      return { key: 'plaza', x: plaza.x, z: plaza.z, inside: false, wander: 4 };
+    }
+    const tavern = placed.find((p) => p.kind === 'h_tavern') ?? placed.find((p) => p.kind === 'h_bandstand');
+    const t = tavern ? doorOf(tavern.uid) : null;
+    if (t && (v.happiness + v.name.length * 7) % 3 !== 0) return { key: `fun:${tavern!.uid}`, ...t, inside: false, wander: 2 };
+    return { key: 'plaza', x: plaza.x, z: plaza.z, inside: false, wander: 3 };
+  }
+
+  private updateVillagers(dt: number): void {
+    for (const ag of this.villagers) {
+      if (!ag.data) {
+        // passers-by in Willowbrook stroll between landmarks
+        if (!ag.path.length && Math.random() < dt * 0.15) {
+          const anchors = Object.entries(this.world.layout.anchors).filter(([k]) => !k.endsWith('_entry'));
+          const [, a] = this.r.pick(anchors);
+          ag.goTo(a.x + this.r.range(-1, 1), a.z + this.r.range(-1, 1));
+        }
+        continue;
+      }
+      const g = this.villagerGoal(ag);
+      if (g.key !== ag.goal) {
+        ag.goal = g.key;
+        if (ag.inside) {
+          // step out of the house
+          const p = this.world.randomWalkable(ag.pos.x, ag.pos.z, 1, this.r);
+          if (p) ag.pos.set(p.x, 0, p.z);
+          ag.setInside(false);
+        }
+        if (!ag.goTo(g.x + this.r.range(-0.4, 0.4), g.z + this.r.range(-0.2, 0.4))) ag.path = [];
+      } else if (!ag.path.length) {
+        const d = Math.hypot(ag.pos.x - g.x, ag.pos.z - g.z);
+        if (g.inside && d < 1.2 && !ag.inside) ag.setInside(true);
+        else if (!g.inside && g.wander) ag.idle(dt, g.x, g.z, g.wander, this.r);
+      }
+      // wish bubble
+      const want = ag.data.wish && !ag.inside ? item(ag.data.wish.id).icon : '';
+      const cur = (ag.bubble?.userData.icon as string | undefined) ?? '';
+      if (want !== cur) {
+        ag.bubble?.removeFromParent();
+        ag.bubble = want ? emojiSprite(want, 0.5) : null;
+        if (ag.bubble) {
+          ag.bubble.userData.icon = want;
+          this.group.add(ag.bubble);
+        }
+      }
+    }
+  }
+
+  /** A few anonymous villagers strolling around Willowbrook — more as the village is restored. */
+  private spawnPassersby(): void {
+    const st = this.ctx.state;
+    const m = st.time.minute;
+    if (m < 7 * 60 || m > 21 * 60) return;
+    const restored = VILLAGE_BUILDINGS.filter((b) => st.village[b.id]?.restored).length;
+    const n = Math.min(7, 2 + Math.floor(restored / 2));
+    const rr = new Random(st.time.day * 31 + 7);
+    const anchors = Object.values(this.world.layout.anchors);
+    for (let i = 0; i < n; i++) {
+      const v = this.ctx.hamlet.makeVillager();
+      const ag = new VillagerAgent(this.world, null, v.look, v.name, 'Passant·e', this.outline);
+      const a = rr.pick(anchors);
+      const p = this.world.randomWalkable(a.x, a.z, 2, rr) ?? a;
+      ag.pos.set(p.x, 0, p.z);
+      this.villagers.push(ag);
+      this.group.add(ag.rig.root);
+    }
+  }
+
+  villagerAgent(uid: string): VillagerAgent | undefined {
+    return this.villagers.find((v) => v.data?.uid === uid);
+  }
+
   animal(uid: string): AnimalAgent | undefined {
     return this.animals.find((a) => a.data.uid === uid);
   }
@@ -608,6 +770,8 @@ export class EntityManager {
       this.updateSchedules();
     }
     for (const n of this.npcs) n.update(dt, player);
+    this.updateVillagers(dt);
+    for (const v of this.villagers) if (!v.inside) v.update(dt, player);
     for (const a of this.animals) a.update(dt, player, st.time.minute);
     for (const w of this.wild) w.update(dt, player, playerSpeed);
     // despawn
@@ -693,6 +857,11 @@ export class EntityManager {
   interactables(): Interactable[] {
     const out: Interactable[] = [];
     for (const n of this.npcs) out.push({ id: `npc:${n.def.id}`, kind: 'npc', x: n.pos.x, z: n.pos.z, radius: 1.6, label: n.def.name, icon: '💬', data: { npc: n.def.id } });
+    for (const v of this.villagers) {
+      if (v.inside) continue;
+      if (v.data) out.push({ id: `villager:${v.data.uid}`, kind: 'villager', x: v.pos.x, z: v.pos.z, radius: 1.5, label: v.data.name, icon: v.data.wish ? '💭' : '💬', data: { uid: v.data.uid } });
+      else out.push({ id: `passerby:${v.def.name}`, kind: 'passerby', x: v.pos.x, z: v.pos.z, radius: 1.4, label: v.def.name, icon: '👋', data: { agent: v } });
+    }
     for (const a of this.animals) {
       const def = a.def;
       out.push({ id: `animal:${a.data.uid}`, kind: 'animal', x: a.pos.x, z: a.pos.z, radius: 1.3 + def.scale * 0.4, label: a.data.product ? `Récolter (${a.data.name})` : `${a.data.name}`, icon: a.data.product ? item(a.data.product).icon : def.icon, data: { uid: a.data.uid } });

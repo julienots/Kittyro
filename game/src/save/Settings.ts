@@ -12,6 +12,7 @@ export interface Settings {
   haptics: boolean;
   autoQuality: boolean;
   leftHanded: boolean;
+  tips: boolean;
 }
 
 const KEY = 'mm_settings';
@@ -28,7 +29,7 @@ export function detectQuality(): Quality {
 }
 
 export function defaultSettings(): Settings {
-  return { quality: detectQuality(), controls: 'both', music: 0.6, sfx: 0.8, ambience: 0.6, zoom: 1, showFps: false, haptics: true, autoQuality: true, leftHanded: false };
+  return { quality: detectQuality(), controls: 'both', music: 0.6, sfx: 0.8, ambience: 0.6, zoom: 1, showFps: false, haptics: true, autoQuality: true, leftHanded: false, tips: true };
 }
 
 export function loadSettings(): Settings {

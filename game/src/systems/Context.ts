@@ -20,6 +20,7 @@ import { ShopSystem } from './Shop';
 import { BuildingSystem } from './Building';
 import { MiningSystem } from './Mining';
 import { ToolSystem } from './Tools';
+import { HamletSystem } from './Hamlet';
 
 /** World queries the logic layer needs. The 3D world implements it; tests stub it. */
 export interface TerrainQuery {
@@ -57,6 +58,7 @@ export class Ctx {
   building: BuildingSystem;
   mining: MiningSystem;
   tools: ToolSystem;
+  hamlet: HamletSystem;
 
   constructor(public state: GameState) {
     this.rng = new Random((state.seed ^ state.time.day * 7919) >>> 0);
@@ -79,6 +81,7 @@ export class Ctx {
     this.building = new BuildingSystem(this);
     this.mining = new MiningSystem(this);
     this.tools = new ToolSystem(this);
+    this.hamlet = new HamletSystem(this);
     this.quests.init();
   }
 

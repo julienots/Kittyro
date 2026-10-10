@@ -6,7 +6,8 @@ import type { CameraRig } from '../render/CameraRig';
 import { h } from '../ui/dom';
 import { BUILDING_BY_ID } from '../data/buildings';
 import { DECOR_BY_ID } from '../data/decor';
-import { farmBuildingModel } from '../models/Buildings';
+import { farmBuildingModel, hamletBuildingModel } from '../models/Buildings';
+import { HAMLET_BY_ID } from '../data/hamlet';
 import { propModel } from '../models/Props';
 import { treeGeo } from '../models/Nature';
 import { footprintOf, sizeOf } from '../systems/Building';
@@ -41,8 +42,12 @@ export class Placement {
     scene.add(this.ghost, this.tiles);
   }
 
-  get area(): 'farm' | 'house' {
-    return this.world.region === 'house' ? 'house' : 'farm';
+  get area(): 'farm' | 'house' | 'hamlet' {
+    return this.world.region === 'house' ? 'house' : this.world.region === 'hamlet' ? 'hamlet' : 'farm';
+  }
+
+  private isBuilding(): boolean {
+    return !!BUILDING_BY_ID[this.kind] || !!HAMLET_BY_ID[this.kind];
   }
 
   private isSapling(): boolean {
@@ -61,12 +66,12 @@ export class Placement {
     this.buildGhost();
     this.active = true;
     this.ghost.visible = this.tiles.visible = true;
-    const name = this.isSapling() ? item(kind).name : BUILDING_BY_ID[kind]?.name ?? DECOR_BY_ID[kind]?.name ?? kind;
+    const name = this.isSapling() ? item(kind).name : BUILDING_BY_ID[kind]?.name ?? HAMLET_BY_ID[kind]?.name ?? DECOR_BY_ID[kind]?.name ?? kind;
     this.hint = h('div.card.placement-hint', null, `${name} — glissez pour déplacer`);
-    const canRotate = !BUILDING_BY_ID[kind] && !this.isSapling();
+    const canRotate = !this.isBuilding() && !this.isSapling();
     this.bar = h('div.card.placement-bar', { onpointerdown: (e: Event) => e.stopPropagation() },
       canRotate ? h('button.btn.sky', { onclick: () => { this.rot = (this.rot + 1) % 4; this.refresh(); } }, '⟳ Tourner') : null,
-      uid && !BUILDING_BY_ID[kind]?.id.startsWith('house') ? h('button.btn.lav', { onclick: () => this.store() }, '📦 Ranger') : null,
+      uid && kind !== 'house' ? h('button.btn.lav', { onclick: () => this.store() }, HAMLET_BY_ID[kind] || BUILDING_BY_ID[kind] ? '🔧 Démonter' : '📦 Ranger') : null,
       h('button.btn.ghost', { onclick: () => this.cancel() }, '✕'),
       h('button.btn', { onclick: () => this.confirm() }, '✓ Valider'),
     );
@@ -79,7 +84,9 @@ export class Placement {
     this.ghost.clear();
     let geo: THREE.BufferGeometry;
     const b = BUILDING_BY_ID[this.kind];
+    const hb = HAMLET_BY_ID[this.kind];
     if (b) geo = farmBuildingModel(this.kind, b.size[0], b.size[1], b.roof, b.wall).geo;
+    else if (hb) geo = hamletBuildingModel(this.kind, hb.size[0], hb.size[1], hb.roof, hb.wall, hb.mat, hb.roofTex).geo;
     else if (this.isSapling()) geo = treeGeo('tree_oak', 'spring').clone().scale(0.35, 0.35, 0.35);
     else geo = propModel(DECOR_BY_ID[this.kind], this.world.season).geo;
     const m = new THREE.Mesh(geo, new THREE.MeshToonMaterial({ vertexColors: true, transparent: true, opacity: 0.75 }));
@@ -104,8 +111,7 @@ export class Placement {
     const fp = this.footprint();
     const cx = (fp.x0 + fp.x1) / 2, cz = (fp.z0 + fp.z1) / 2;
     const y = this.world.heightAt(cx, cz);
-    const b = BUILDING_BY_ID[this.kind];
-    if (b) {
+    if (this.isBuilding()) {
       this.ghost.position.set(fp.x0, y, fp.z0);
       this.ghost.rotation.y = 0;
     } else {
@@ -147,7 +153,7 @@ export class Placement {
     if (ok) {
       this.ui.g.audio.play('build');
       const kind = this.kind;
-      const more = !this.uid && !BUILDING_BY_ID[kind] && !this.isSapling() && (this.ctx.state.decorOwned[kind] ?? 0) > 0;
+      const more = !this.uid && !BUILDING_BY_ID[kind] && !HAMLET_BY_ID[kind] && !this.isSapling() && (this.ctx.state.decorOwned[kind] ?? 0) > 0;
       this.finish(true);
       // keep placing the same decoration (fences, paths...) quickly
       if (more) this.start(kind, { x: this.x + 1.5, z: this.z + 0.5 });
@@ -157,7 +163,7 @@ export class Placement {
   private store(): void {
     if (this.uid && this.ctx.building.store(this.uid)) {
       this.ui.g.audio.play('close');
-      this.ui.toast('Rangé dans le sac de décorations', '📦');
+      this.ui.toast(this.isBuilding() ? 'Bâtiment démonté : la moitié du prix vous est remboursée' : 'Rangé dans le sac de décorations', '📦');
       this.finish(true);
     }
   }
@@ -200,7 +206,7 @@ export class Placement {
   pick(nx: number, ny: number): void {
     const p = this.rig.screenToGround(nx, ny, 0);
     if (!p) return;
-    const list = this.area === 'farm' ? this.ctx.state.farm.placed : this.ctx.state.house.furniture;
+    const list = this.ctx.building.list(this.area);
     const tx = Math.floor(p.x), tz = Math.floor(p.z);
     // prefer non-path objects
     const hits = list.filter((o) => {
