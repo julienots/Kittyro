@@ -101,3 +101,8 @@ affichées une seule fois (désactivables), carte de la vallée illustrée avec 
   même temps (le 2ᵉ doigt n'est plus pris pour un pincement de zoom ; pas de zoom en 1ʳᵉ personne).
 - Le bouton 👁️ (vue 1ʳᵉ personne) rejoint la rangée de menus en haut à droite ; les boutons ⟲ ⟳ qui
   encombraient l'écran sont retirés (rotation au doigt, ou dans Menu → Caméra).
+
+## v1.3.2
+Outils en 1ʳᵉ personne orientés pour l'usage : tranchant de la hache, pointe de la pioche, lame de la houe
+et bec de l'arrosoir dirigés vers l'avant, vers le point de visée ; outils penchés vers l'avant, prêts à frapper ;
+faucille couchée, la lame balayant vers l'avant-gauche.

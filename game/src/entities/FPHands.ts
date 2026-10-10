@@ -218,8 +218,8 @@ export class FPHands {
       if (!tool) return;
       const m = fpToolMesh(tool, tier);
       m.scale.setScalar(tool === 'can' ? 0.62 : tool === 'rod' ? 0.8 : 0.78);
-      // turn the head so its broad face shows (axes, picks and hoes are flat seen edge-on)
-      m.rotation.y = ({ axe: -1.15, pickaxe: -1.3, hoe: -0.95, sickle: -1.0, can: 0.45 } as Record<string, number>)[tool] ?? 0;
+      // working edge points forward, angled toward the aiming dot (what you are about to hit)
+      m.rotation.y = ({ axe: 0.5, pickaxe: 0.45, hoe: 0.35, sickle: 0.95, can: 0.35, net: 0.3 } as Record<string, number>)[tool] ?? 0;
       this.tool = m;
       hand.grip.add(m);
     };
@@ -379,7 +379,7 @@ export class FPHands {
     apply(R, rPos, rRot, springy);
     // keep the tool upright-ish whatever the arm angle
     if (this.tool) {
-      const lean = this.toolKey.startsWith('can') ? -0.1 : this.toolKey.startsWith('rod') ? 0.05 : -0.55;
+      const lean = this.toolKey.startsWith('can') ? -0.1 : this.toolKey.startsWith('rod') ? 0.05 : this.toolKey.startsWith('sickle') ? -1.2 : -0.85;
       this.tool.rotation.x = damp(this.tool.rotation.x, -R.root.rotation.x * 0.6 + lean + toolTilt, springy, dt);
     }
     L.hand.pose(dt, lCurl, lThumb, t, twitch);
