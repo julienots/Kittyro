@@ -95,3 +95,9 @@ affichées une seule fois (désactivables), carte de la vallée illustrée avec 
   chaque pas, inclinaison dans les virages et pas chassés, champ de vision qui s'élargit à grande
   vitesse, regard lissé ; les bras suivent le pas, traînent derrière les mouvements de tête et
   respirent au repos ; léger vignettage.
+
+## v1.3.1
+- Multi-touch : un doigt sur le joystick + un autre qui glisse à droite = marcher ET tourner la vue en
+  même temps (le 2ᵉ doigt n'est plus pris pour un pincement de zoom ; pas de zoom en 1ʳᵉ personne).
+- Le bouton 👁️ (vue 1ʳᵉ personne) rejoint la rangée de menus en haut à droite ; les boutons ⟲ ⟳ qui
+  encombraient l'écran sont retirés (rotation au doigt, ou dans Menu → Caméra).

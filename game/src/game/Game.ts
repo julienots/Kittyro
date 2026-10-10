@@ -1538,7 +1538,7 @@ export class Game implements GameApi {
     this.saveSettings();
     this.applyView(this.settings.view);
     audio.play('click');
-    if (this.settings.view === 'fp') this.ui.tip('fp_view', '👁️', 'Vue à la première personne', 'Glissez le doigt sur la droite de l\'écran (ou la souris) pour regarder autour de vous. Le joystick avance dans la direction du regard ; visez un objet avec le point au centre et touchez le gros bouton. 👁️ pour revenir à la vue d\'ensemble.');
+    if (this.settings.view === 'fp') this.ui.tip('fp_view', '👁️', 'Vue à la première personne', 'Pouce gauche sur le joystick pour marcher, autre doigt à droite de l\'écran pour regarder autour — en même temps. Le joystick avance dans la direction du regard ; visez un objet avec le point au centre et touchez le gros bouton. Le bouton 👁️ en haut à droite ramène la vue d\'ensemble.');
   }
 
   private applyView(v: 'iso' | 'fp'): void {
@@ -1557,6 +1557,7 @@ export class Game implements GameApi {
       if (this.player.horse) this.player.horse.root.visible = !fp;
     }
     this.ui.root.classList.toggle('fp-view', fp);
+    this.input.noPinch = fp;
   }
 
   private leaveFpForPlacement(): void {

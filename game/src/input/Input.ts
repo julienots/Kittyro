@@ -25,6 +25,9 @@ export class Input {
   private joyVec = { x: 0, y: 0 };
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean; lx: number; ly: number }>();
   private pinchDist = 0;
+  private pinching = false;
+  /** first-person view: no pinch zoom, so a second finger always looks around */
+  noPinch = false;
   private base: HTMLDivElement;
   private knob: HTMLDivElement;
 
@@ -67,10 +70,12 @@ export class Input {
     if (!this.enabled && !this.dragMode) return;
     this.canvas.setPointerCapture?.(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false, lx: e.clientX, ly: e.clientY });
-    if (this.pointers.size === 2) {
+    // two fingers = pinch zoom, unless one of them is steering the joystick:
+    // then the second finger turns the camera while you keep walking
+    if (this.pointers.size === 2 && this.joyId === null && !this.noPinch) {
       const [a, b] = [...this.pointers.values()];
       this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
-      this.releaseJoy();
+      this.pinching = true;
       return;
     }
     if (this.dragMode) {
@@ -98,7 +103,7 @@ export class Input {
     p.x = e.clientX;
     p.y = e.clientY;
     if (Math.hypot(p.x - p.sx, p.y - p.sy) > 12) p.moved = true;
-    if (this.pointers.size === 2) {
+    if (this.pinching && this.pointers.size === 2) {
       const [a, b] = [...this.pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (this.pinchDist > 0) this.onZoom?.((this.pinchDist - d) * 0.004);
@@ -131,7 +136,15 @@ export class Input {
   private up = (e: PointerEvent) => {
     const p = this.pointers.get(e.pointerId);
     this.pointers.delete(e.pointerId);
-    if (this.pointers.size < 2) this.pinchDist = 0;
+    if (this.pointers.size < 2) {
+      this.pinchDist = 0;
+      if (this.pinching) {
+        this.pinching = false;
+        // the finger left on screen must not turn into a tap or a jump of the view
+        for (const q of this.pointers.values()) { q.moved = true; q.lx = q.x; q.ly = q.y; }
+        return;
+      }
+    }
     if (!p) return;
     if (this.dragMode) {
       this.onDrag?.(...this.norm(e.clientX, e.clientY), 'end');

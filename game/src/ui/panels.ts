@@ -844,8 +844,8 @@ function settings(ui: UI): void {
       h('button.chip', { onclick: () => g.rotateCamera(-Math.PI / 4) }, '⟳ Tourner'),
     ),
     help(g.view === 'fp'
-      ? 'Vous voyez par les yeux de votre personnage, mains comprises. Glissez le doigt sur la droite de l\'écran pour regarder autour (haut/bas aussi) ; le joystick avance là où vous regardez. Le point au centre vise l\'objet avec lequel interagir.'
-      : 'Vue « maquette » au-dessus du personnage. Glissez le doigt sur la droite de l\'écran pour faire tourner la caméra et changer l\'inclinaison, ou utilisez ⟲ ⟳ au-dessus des boutons d\'action. Pincez pour zoomer.'),
+      ? 'Vous voyez par les yeux de votre personnage, mains comprises. Joystick à gauche pour avancer, doigt à droite pour regarder autour (haut/bas aussi) — les deux en même temps. 👁️ en haut à droite pour revenir. Le point au centre vise l\'objet avec lequel interagir.'
+      : 'Vue « maquette » au-dessus du personnage. Glissez le doigt sur la droite de l\'écran pour faire tourner la caméra et changer l\'inclinaison, ou utilisez les boutons ci-dessus. Pincez pour zoomer.'),
     h('h3', null, '✨ Qualité graphique'),
     chips<Quality>([['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['ultra', 'Ultra']], s.quality, (v) => set('quality', v)),
     help(QUALITY_HELP[s.quality]),
@@ -866,7 +866,7 @@ function settings(ui: UI): void {
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
     help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.3 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.3.1 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
 }
 
@@ -876,7 +876,7 @@ const GUIDE: { id: string; label: string; body: [string, string][] }[] = [
     ['🕹️ Se déplacer', 'Glissez le pouce sur la moitié gauche de l\'écran (ou touchez un endroit). Au clavier : ZQSD / WASD / flèches.'],
     ['✋ Le gros bouton', 'Il change selon ce qui est devant vous : parler, récolter, couper, miner, pêcher, entrer… Il choisit même le bon outil tout seul.'],
     ['🛠️ Le petit bouton', 'Utilise l\'outil équipé (houe, arrosoir…). Appui long = roue des outils.'],
-    ['📷 La caméra', 'Glissez le doigt sur la droite de l\'écran pour tourner la vue, ou ⟲ ⟳. Le bouton 👁️ passe en vue à la première personne (avec vos mains !). Au clavier : V, [ et ].'],
+    ['📷 La caméra', 'Glissez le doigt sur la droite de l\'écran pour tourner la vue — même en marchant avec le joystick. Le bouton 👁️ en haut à droite passe en vue à la première personne (avec vos mains !). Au clavier : V, [ et ].'],
     ['📜 La quête en haut à gauche', 'Elle vous guide pas à pas. Touchez-la pour voir toutes vos quêtes et réclamer vos récompenses.'],
     ['😴 Pas de stress', 'Rien ne meurt, rien ne se perd. Si vous veillez trop tard, vous vous réveillez simplement chez vous.'],
   ] },

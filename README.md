@@ -13,12 +13,12 @@ Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.3.0-debug.apk` | APK de test (debuggable, signé clé debug) |
-| `mossy-meadows-1.3.0-release.apk` | APK release signé |
-| `mossy-meadows-1.3.0-release.aab` | Android App Bundle pour le Play Store |
+| `mossy-meadows-1.3.1-debug.apk` | APK de test (debuggable, signé clé debug) |
+| `mossy-meadows-1.3.1-release.apk` | APK release signé |
+| `mossy-meadows-1.3.1-release.aab` | Android App Bundle pour le Play Store |
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.3.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.3.1-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 

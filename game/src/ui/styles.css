@@ -296,15 +296,10 @@ details.howto li { margin: 4px 0; }
 .tip-card button { margin-left: auto; flex-shrink: 0; }
 
 /* camera controls & first person */
-.cam-ctrl { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(232px + var(--safe-b)); display: flex; gap: 6px; }
-.cam-ctrl button { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,253,248,.92); box-shadow: var(--shadow); font-size: 22px; font-weight: 600; color: var(--ink); display: flex; align-items: center; justify-content: center; }
-.cam-ctrl button:active { transform: scale(.92); }
-.left-handed .cam-ctrl { right: auto; left: calc(18px + var(--safe-l)); }
-.fp-view .cam-ctrl .view { background: var(--sun); }
+.fp-view .view-btn { background: var(--sun); }
 .crosshair { display: none; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 0 2px rgba(60,40,30,.35); pointer-events: none !important; }
 .fp-view .crosshair { display: block; }
 .fp-view .joy-hint { display: none; }
-@media (max-height: 500px) { .cam-ctrl { bottom: calc(196px + var(--safe-b)); } .cam-ctrl button { width: 40px; height: 40px; font-size: 19px; } }
 
 .fp-vignette { display: none; position: absolute; inset: 0; pointer-events: none !important; background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 58%, rgba(30,20,10,.28) 100%); }
 .fp-view .fp-vignette { display: block; }

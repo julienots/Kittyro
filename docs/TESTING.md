@@ -9,7 +9,7 @@
 | `node e2e/systems.mjs` | 20 vérifications de systèmes en conditions réelles : labour/semis/arrosage/récolte via les vrais boutons, coupe d'arbre et minage (outil auto), vente, restauration de la boutique, dialogue PNJ, construction d'un poulailler au doigt, adoption, sommeil → jour 2 → œuf, pêche, mine + échelle cachée + étage 2, mini-jeu de fête, pluie/automne/arc-en-ciel/hiver, **sauvegarde → rechargement de la page → Continuer**. |
 | `node e2e/explore.mjs` | Visite des 7 régions extérieures, apparition forcée de créatures/insectes/animaux sauvages, observation, artisanat, placement d'un canapé dans la maison. |
 | `node e2e/hamlet.mjs [url] [WxH]` | Parcours du hameau : sentier ferme → Clairefontaine, construction via la vraie UI de placement, arrivée du 1er villageois, nuit → production, registre (bouton d'action) → « Tout récupérer », dialogue villageois + souhait exaucé, menus, passants à Willowbrook (8 vérifications). |
-| `node e2e/camera.mjs [url]` | Vrais gestes de souris : glisser le bâtiment fantôme, flèche de précision, rotation, construction d'un poulailler tourné, débris non bloquants, rotation caméra au glisser, vue 1ʳᵉ personne (marche, hache) et retour (8 vérifications). |
+| `node e2e/camera.mjs [url]` | Vrais gestes de souris : glisser le bâtiment fantôme, flèche de précision, rotation, construction d'un poulailler tourné, débris non bloquants, rotation caméra au glisser, vue 1ʳᵉ personne (marche, hache), **deux doigts simultanés (joystick + regard)** et retour (9 vérifications). |
 | `node e2e/look.mjs <url> <prefix> "<js>;;shot;;…"` | Captures d'écran scriptées pour vérifier un rendu. |
 | `node e2e/mobile.mjs <url>` | Build de production sur viewport téléphone paysage & portrait avec événements tactiles (joystick). |
 
