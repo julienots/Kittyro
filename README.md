@@ -13,12 +13,12 @@ Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.1.0-debug.apk` | APK de test (debuggable, signé clé debug) |
-| `mossy-meadows-1.1.0-release.apk` | APK release signé |
-| `mossy-meadows-1.1.0-release.aab` | Android App Bundle pour le Play Store |
+| `mossy-meadows-1.2.0-debug.apk` | APK de test (debuggable, signé clé debug) |
+| `mossy-meadows-1.2.0-release.apk` | APK release signé |
+| `mossy-meadows-1.2.0-release.aab` | Android App Bundle pour le Play Store |
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.1.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.2.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 
@@ -31,7 +31,8 @@ npm run build      # build mono-fichier dans game/dist/index.html
 ```
 
 Clavier : ZQSD/WASD/flèches pour marcher, `E`/Espace action, `F` outil, `R` changer d'outil,
-`1-6` outils, `I` sac, `M` carte, `J` quêtes, `B` construire, `Échap` menu.
+`1-6` outils, `I` sac, `M` carte, `J` quêtes, `B` construire, `V` vue 1ʳᵉ personne, `[` `]` tourner la caméra
+(ou glisser la souris), `Échap` menu.
 
 ## Construire l'APK / l'AAB
 

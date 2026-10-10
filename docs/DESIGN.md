@@ -67,3 +67,15 @@ approche ; passants dans Willowbrook (plus nombreux à mesure que le village est
 ## Guidage (v1.1)
 Chaque option du menu est expliquée, volumes en %, guide du jeu (5 chapitres), astuces contextuelles
 affichées une seule fois (désactivables), carte de la vallée illustrée avec fiche de région.
+
+## Caméra & construction (v1.2)
+- **Caméra libre** : glisser le doigt hors du joystick (ou la souris) fait tourner la vue et change
+  l'inclinaison ; boutons ⟲ ⟳ au-dessus des actions.
+- **Vue à la première personne** (bouton 👁️, touche V) : regard au doigt, joystick dans la direction
+  du regard, point de visée au centre, et **mains visibles** qui balancent à la marche, traînent
+  derrière les mouvements de tête, respirent au repos et font les gestes des outils (hache, houe,
+  arrosoir, canne…), cueillette et repas.
+- **Placement libre** : le bâtiment suit le doigt en relatif (il ne se cache plus sous le doigt), la
+  caméra le suit et défile au bord de l'écran, flèches case par case, **rotation de tous les bâtiments**
+  (portes, animaux et villageois suivent), herbes/cailloux/souches dessous ramassés automatiquement,
+  sélection plus tolérante en mode « Déplacer ».

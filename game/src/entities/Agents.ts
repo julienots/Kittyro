@@ -15,9 +15,8 @@ import { angleLerp, damp } from '../core/MathUtil';
 import { Random, rng } from '../core/Random';
 import { isNight } from '../data/constants';
 import { FARM } from '../state/newGame';
-import { footprintOf } from '../systems/Building';
+import { doorPoint } from '../systems/Building';
 import type { AnimalState, VillagerState } from '../state/types';
-import { HAMLET_BY_ID } from '../data/hamlet';
 import { VILLAGE_BUILDINGS } from '../data/village';
 
 /** Shared path-following mover for NPCs and animals. */
@@ -137,10 +136,7 @@ export class AnimalAgent extends Mover {
     this.pos.set(data.x, 0, data.z);
     this.r = new Random(data.uid.length * 991 + data.bornDay);
     const home = data.homeUid ? ctx.state.farm.placed.find((p) => p.uid === data.homeUid) : null;
-    if (home) {
-      const fp = footprintOf(home.kind, home.x, home.z, home.rot);
-      this.home = { x: (fp.x0 + fp.x1) / 2, z: fp.z1 + 0.8 };
-    }
+    if (home) this.home = doorPoint(home.kind, home.x, home.z, home.rot, 0.8);
     // keep inside walkable space
     if (world.isBlocked(this.pos.x, this.pos.z, 0.2)) {
       const p = world.randomWalkable(this.home?.x ?? FARM.spawn.x + 3, this.home?.z ?? FARM.spawn.z + 2, 3, this.r);
@@ -672,8 +668,7 @@ export class EntityManager {
     const doorOf = (uid: string | null) => {
       const p = uid ? placed.find((q) => q.uid === uid) : null;
       if (!p) return null;
-      const fp = footprintOf(p.kind, p.x, p.z, p.rot);
-      return { x: (fp.x0 + fp.x1) / 2, z: fp.z1 + 0.6 };
+      return doorPoint(p.kind, p.x, p.z, p.rot, 0.6);
     };
     const plaza = this.world.layout.anchors.plaza;
     const home = doorOf(v.homeUid);

@@ -13,7 +13,7 @@ import { DECOR_BY_ID } from '../data/decor';
 import { CROP_BY_ID } from '../data/crops';
 import { FRUIT_TREES } from '../data/resources';
 import { FARM } from '../state/newGame';
-import { footprintOf } from '../systems/Building';
+import { footprintOf, doorPoint } from '../systems/Building';
 import { vcMat, colorMat } from '../render/Materials';
 import { glowMat, windowMat, cropMat, propMat } from './PropFactory';
 import { easeOutBack } from '../core/MathUtil';
@@ -155,7 +155,11 @@ export class FarmView {
       const y = this.world.heightAt(cx, cz);
       if (bdef) {
         const model = farmBuildingModel(p.kind, bdef.size[0], bdef.size[1], bdef.roof, bdef.wall);
+        // outer group sits on the footprint centre and carries the rotation; inner group = model space
+        const outer = new THREE.Group();
         const g = new THREE.Group();
+        outer.add(g);
+        g.position.set(-bdef.size[0] / 2, 0, -bdef.size[1] / 2);
         const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true, textured: true }));
         m.castShadow = m.receiveShadow = true;
         g.add(m);
@@ -178,11 +182,13 @@ export class FarmView {
           g.add(water);
           for (let ix = fp.x0; ix < fp.x1; ix++) for (let iz = fp.z0; iz < fp.z1; iz++) this.pondTiles.add(`${ix},${iz}`);
         }
-        g.position.set(fp.x0, y, fp.z0);
-        this.group.add(g);
-        this.objs.push({ uid: p.uid, kind: p.kind, group: g, spinner });
-        for (const s of model.smoke) this.smokePoints.push(s.clone().add(g.position));
-        for (const l of model.lights) this.lightPoints.push(l.clone().add(g.position));
+        outer.position.set(cx, y, cz);
+        outer.rotation.y = -p.rot * (Math.PI / 2);
+        outer.updateMatrixWorld(true);
+        this.group.add(outer);
+        this.objs.push({ uid: p.uid, kind: p.kind, group: outer, spinner });
+        for (const s of model.smoke) this.smokePoints.push(g.localToWorld(s.clone()));
+        for (const l of model.lights) this.lightPoints.push(g.localToWorld(l.clone()));
       } else if (DECOR_BY_ID[p.kind]) {
         const def = DECOR_BY_ID[p.kind];
         const yy = def.path ? y + 0.005 : y;
@@ -246,8 +252,8 @@ export class FarmView {
       if (def && (def.path || def.blocks === false)) continue;
       const fp = footprintOf(p.kind, p.x, p.z, p.rot);
       for (let x = fp.x0; x < fp.x1; x++) for (let z = fp.z0; z < fp.z1; z++) {
-        if (p.kind === 'greenhouse' && !(x === fp.x0 || x === fp.x1 - 1) ) continue; // walk inside the greenhouse
-        if (p.kind === 'sanctuary' && z > fp.z0 && x > fp.x0 && x < fp.x1 - 1) continue;
+        if (p.rot === 0 && p.kind === 'greenhouse' && !(x === fp.x0 || x === fp.x1 - 1)) continue; // walk inside the greenhouse
+        if (p.rot === 0 && p.kind === 'sanctuary' && z > fp.z0 && x > fp.x0 && x < fp.x1 - 1) continue;
         arr[z * w + x] = 1;
       }
       // doors stay reachable: the tile in front is never blocked (outside footprint anyway)
@@ -262,9 +268,12 @@ export class FarmView {
     if (!p) return null;
     const def = BUILDING_BY_ID[p.kind];
     if (!def) return null;
-    const fp = footprintOf(p.kind, p.x, p.z, p.rot);
-    if (p.kind === 'house') return new THREE.Vector3(fp.x0 + 2.8, 0, fp.z1 + 0.3);
-    return new THREE.Vector3((fp.x0 + fp.x1) / 2, 0, fp.z1 + 0.35);
+    if (p.kind === 'house') {
+      const fp = footprintOf(p.kind, p.x, p.z, p.rot);
+      return new THREE.Vector3(fp.x0 + 2.8, 0, fp.z1 + 0.3);
+    }
+    const d = doorPoint(p.kind, p.x, p.z, p.rot, 0.35);
+    return new THREE.Vector3(d.x, 0, d.z);
   }
 
   update(dt: number, time: number, night: number): void {
@@ -296,7 +305,7 @@ export class FarmView {
       // bees around hives in good weather
       if (night < 0.3) for (const o of this.objs) if (o.kind === 'beehive' && Math.random() < 0.7) {
         const p = o.group.position;
-        this.particles.emit({ x: p.x + 0.5 + (Math.random() - 0.5), y: p.y + 0.9 + Math.random() * 0.4, z: p.z + 0.5 + (Math.random() - 0.5), vx: (Math.random() - 0.5), vz: (Math.random() - 0.5), life: 1.2, size: 0.07, color: 0xffc42a, frame: 0, wobble: 2 });
+        this.particles.emit({ x: p.x + (Math.random() - 0.5), y: p.y + 0.9 + Math.random() * 0.4, z: p.z + (Math.random() - 0.5), vx: (Math.random() - 0.5), vz: (Math.random() - 0.5), life: 1.2, size: 0.07, color: 0xffc42a, frame: 0, wobble: 2 });
       }
     }
     void time;

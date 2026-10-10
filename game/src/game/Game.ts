@@ -15,6 +15,7 @@ import { World, type Interactable } from '../world/World';
 import { T, WALKABLE } from '../world/Layout';
 import { updateGlow, updateWindows } from '../world/PropFactory';
 import { Player } from '../entities/Player';
+import { FPHands } from '../entities/FPHands';
 import { EntityManager, type WildAgent, type VillagerAgent } from '../entities/Agents';
 import { Input } from '../input/Input';
 import { audio } from '../audio/Audio';
@@ -69,6 +70,8 @@ export class Game implements GameApi {
   particles: Particles;
   weatherFx: WeatherFX;
   life = new AmbientLife();
+  fpHands = new FPHands();
+  private viewBeforePlacement: 'iso' | 'fp' | null = null;
   ctx!: Ctx;
   world!: World;
   player!: Player;
@@ -114,7 +117,8 @@ export class Game implements GameApi {
     this.particles.budget = this.renderer.profile.particles;
     this.weatherFx = new WeatherFX(this.particles, this.settings.quality === 'low' ? 400 : 900);
     const scene = this.renderer.scene;
-    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group);
+    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group, this.renderer.camera);
+    this.renderer.camera.add(this.fpHands.group);
     this.sky.setShadowSize(this.renderer.profile.shadow);
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
@@ -187,7 +191,7 @@ export class Game implements GameApi {
     this.world = new World(this.ctx, this.particles, () => this.renderer.profile.grass, () => this.renderer.profile.lights);
     this.ctx.terrain = {
       isTillable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT]),
-      isBuildable: (x, z) => (this.world.region === 'farm' || this.world.region === 'hamlet') && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH, T.FOREST]),
+      isBuildable: (x, z) => (this.world.region === 'farm' || this.world.region === 'hamlet') && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH, T.FOREST], true),
     };
     this.player = new Player(this.ctx, this.world, this.particles);
     this.player.outline = this.renderer.profile.outlines;
@@ -200,6 +204,7 @@ export class Game implements GameApi {
     this.placement = new Placement(this.ctx, this.world, this.ui, this.rig, this.renderer.scene);
     this.placement.onDone = () => {
       this.input.dragMode = false;
+      if (this.viewBeforePlacement) { this.applyView(this.viewBeforePlacement); this.viewBeforePlacement = null; }
       this.refreshWorld(this.world.region === 'house' ? 'house' : 'placed');
     };
     this.ctx.tools.refill();
@@ -207,17 +212,21 @@ export class Game implements GameApi {
     this.input.onTap = (nx, ny) => this.onTap(nx, ny);
     this.input.onZoom = (d) => this.rig.setZoom(this.rig.zoomTarget + d);
     this.input.onKey = (k) => this.onKey(k);
-    this.input.onDrag = (nx, ny) => this.placement.drag(nx, ny);
+    this.input.onLook = (dx, dy) => { if (!this.title && !this.placement.active && !this.ui.modalOpen) this.rig.look(dx, dy); };
+    this.input.onDrag = (nx, ny, phase) => this.placement.drag(nx, ny, phase);
     this.ui.onAction = () => this.primaryAction();
     this.ui.onTool = () => this.useTool();
   }
 
-  private tileFree(x: number, z: number, allowed: number[]): boolean {
+  private tileFree(x: number, z: number, allowed: number[], debrisOk = false): boolean {
     const L = this.world.layout;
     if (!L || x < 0 || z < 0 || x >= L.w || z >= L.d) return false;
     const t = L.tiles[z * L.w + x];
     if (!allowed.includes(t) || L.blocked[z * L.w + x]) return false;
-    for (const nv of this.world.nodes) if (Math.floor(nv.node.x) === x && Math.floor(nv.node.z) === z && nv.growth > 0.05 && !(nv.node.once && nv.growth < 1)) return false;
+    for (const nv of this.world.nodes) {
+      if (Math.floor(nv.node.x) !== x || Math.floor(nv.node.z) !== z) continue;
+      if (nv.growth > 0.05 && !(nv.node.once && nv.growth < 1) && !(debrisOk && this.ctx.gathering.isDebris(nv.node))) return false;
+    }
     return true;
   }
 
@@ -255,6 +264,8 @@ export class Game implements GameApi {
       this.ctx.quests.refresh();
       this.loadRegion(region, anchor, true, isNew ? undefined : { x: st.player.x, z: st.player.z });
       this.ui.buildHud();
+      this.fpHands.build(st.player.look);
+      this.applyView(this.settings.view);
       this.dayCoinsStart = st.player.coins;
       if (isNew) {
         this.save();
@@ -574,7 +585,7 @@ export class Game implements GameApi {
       st.playSeconds += dt;
     }
     if (this.title) {
-      this.rig.yaw += dt * 0.04;
+      this.rig.yawTarget += dt * 0.04;
       st.time.minute = 17 * 60 + Math.sin(this.elapsed * 0.05) * 30;
     }
     // input -> world space movement
@@ -587,6 +598,9 @@ export class Game implements GameApi {
     }
     if (this.title) this.player.root.visible = false;
     else this.player.root.visible = !this.previewRig;
+    const fp = this.rig.view === 'fp';
+    if (fp) this.player.rig.root.visible = this.ui.panelName === 'wardrobe';
+    this.player.lockFacing = fp && !this.title ? Math.atan2(this.rig.forward.x, this.rig.forward.z) : null;
     const prev = this.player.pos.clone();
     this.player.update(active ? dt : 0, mx, mz, this.sky.state.night);
     st.stats.walked = (st.stats.walked ?? 0) + prev.distanceTo(this.player.pos);
@@ -594,7 +608,10 @@ export class Game implements GameApi {
     this.entities.update(active || this.title ? dt : 0, this.player.pos, speed);
     this.fishing.update(dt);
     // camera & sky
-    this.rig.update(dt, this.player.pos, this.player.vel);
+    this.placement.update(dt);
+    this.fpHands.update(dt, this.player, { visible: fp && !this.title && !this.placement.active, turnSpeed: this.rig.turnSpeed, bob: this.rig.bob, tier: (t) => (this.ctx.state.player.tools as Record<string, number>)[t] ?? 0 });
+    if (this.placement.active) this.rig.update(dt, this.placement.center, new THREE.Vector3());
+    else this.rig.update(dt, this.player.pos, this.player.vel);
     this.rig.updateSeeThrough(this.player.pos);
     const weather = this.world.layout.indoor ? 'sun' : st.weather.current;
     this.sky.overcast += ((weather === 'rain' ? 0.7 : weather === 'storm' ? 1 : weather === 'cloudy' ? 0.45 : weather === 'fog' ? 0.6 : weather === 'snow' ? 0.5 : 0) - this.sky.overcast) * Math.min(1, dt);
@@ -712,6 +729,8 @@ export class Game implements GameApi {
       const d = Math.hypot(dx, dz);
       if (d > radius) return Infinity;
       const facing = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
+      // first person: only what's in front of you (the dot in the middle of the screen)
+      if (this.rig.view === 'fp') return facing < 0.55 && d > 0.6 ? Infinity : d - facing * 1.2;
       return d - facing * 0.6;
     };
     let best: ActionTarget | null = null;
@@ -1393,6 +1412,9 @@ export class Game implements GameApi {
     else if (k === 'm') this.ui.openPanel('map');
     else if (k === 'j') this.ui.openPanel('quests');
     else if (k === 'b') this.ui.openPanel('build');
+    else if (k === 'v') this.toggleView();
+    else if (k === '[' || k === ',') this.rotateCamera(Math.PI / 4);
+    else if (k === ']' || k === '.') this.rotateCamera(-Math.PI / 4);
     else if (k === 'escape') {
       if (this.placement.active) this.placement.cancel();
       else if (this.ui.overlay) this.ui.closePanel();
@@ -1461,12 +1483,14 @@ export class Game implements GameApi {
       if (!a.ok) { this.ui.toast(a.reason!, '🔨', 'warn'); return; }
     }
     const f = this.frontPoint(2.5);
+    this.leaveFpForPlacement();
     this.input.dragMode = true;
     this.placement.start(kind, f, uid);
   }
 
   enterEditMode(): void {
     if (this.world.region !== 'farm' && this.world.region !== 'house' && this.world.region !== 'hamlet') return;
+    this.leaveFpForPlacement();
     this.input.dragMode = true;
     this.placement.beginEdit();
   }
@@ -1494,6 +1518,50 @@ export class Game implements GameApi {
 
   refreshLook(): void {
     this.player.rebuild();
+    this.fpHands.build(this.ctx.state.player.look);
+    this.applyView(this.settings.view);
+  }
+
+  // ------------------------------------------------------------ camera & first person
+  get view(): 'iso' | 'fp' {
+    return this.rig.view;
+  }
+
+  rotateCamera(d: number): void {
+    this.rig.rotate(d);
+  }
+
+  toggleView(): void {
+    this.settings.view = this.rig.view === 'fp' ? 'iso' : 'fp';
+    this.saveSettings();
+    this.applyView(this.settings.view);
+    audio.play('click');
+    if (this.settings.view === 'fp') this.ui.tip('fp_view', '👁️', 'Vue à la première personne', 'Glissez le doigt sur la droite de l\'écran (ou la souris) pour regarder autour de vous. Le joystick avance dans la direction du regard ; visez un objet avec le point au centre et touchez le gros bouton. 👁️ pour revenir à la vue d\'ensemble.');
+  }
+
+  private applyView(v: 'iso' | 'fp'): void {
+    const fp = v === 'fp' && !this.title;
+    if (fp && this.rig.view !== 'fp') {
+      // look where the avatar faces
+      this.rig.yawTarget = this.rig.yaw = this.player.facing + Math.PI;
+      this.rig.fpPitch = -0.12;
+    }
+    this.rig.setView(fp ? 'fp' : 'iso');
+    this.renderer.setTiltShift(fp ? 0 : 1);
+    globalUniforms.uSeeThrough.value = fp ? 0 : 1;
+    if (this.player) {
+      this.player.lockFacing = null;
+      this.player.rig.root.visible = !fp;
+      if (this.player.horse) this.player.horse.root.visible = !fp;
+    }
+    this.ui.root.classList.toggle('fp-view', fp);
+  }
+
+  private leaveFpForPlacement(): void {
+    if (this.rig.view === 'fp' && !this.viewBeforePlacement) {
+      this.viewBeforePlacement = 'fp';
+      this.applyView('iso');
+    }
   }
 
   previewLook(look: Appearance | null): void {

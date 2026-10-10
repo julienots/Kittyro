@@ -35,4 +35,7 @@ export interface GameApi {
   goMine(floor: number): void;
   startMinigame(id: string): void;
   previewLook(look: Appearance | null): void;
+  rotateCamera(d: number): void;
+  toggleView(): void;
+  readonly view: 'iso' | 'fp';
 }

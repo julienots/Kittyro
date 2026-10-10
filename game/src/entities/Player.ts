@@ -22,14 +22,16 @@ export class Player {
   facing = 0;
   private targetFacing = 0;
   anim: PlayerAnim = 'idle';
-  private animT = 0;
+  animT = 0;
   private walkT = 0;
   private toolMesh: THREE.Mesh | null = null;
-  private toolKey = '';
+  toolKey = '';
   private onImpact: (() => void) | null = null;
   private impactAt = 0.3;
   private impactDone = false;
-  private animDur = 0.5;
+  animDur = 0.5;
+  /** first-person view: the body always faces where the camera looks */
+  lockFacing: number | null = null;
   path: { x: number; z: number }[] = [];
   pathTarget: { x: number; z: number; onArrive?: () => void } | null = null;
   private blinkT = 2;
@@ -184,7 +186,8 @@ export class Player {
     const tvz = canMove && mag > 0.05 ? (mz / (mag || 1)) * sp : 0;
     this.vel.x = damp(this.vel.x, tvx, 14, dt);
     this.vel.z = damp(this.vel.z, tvz, 14, dt);
-    if (canMove && mag > 0.05) this.targetFacing = Math.atan2(mx, mz);
+    if (this.lockFacing !== null) this.targetFacing = this.lockFacing;
+    else if (canMove && mag > 0.05) this.targetFacing = Math.atan2(mx, mz);
     // integrate with axis-separated collision (slides along walls)
     const r = this.horse ? 0.4 : 0.26;
     const nx = this.pos.x + this.vel.x * dt;

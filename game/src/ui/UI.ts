@@ -130,6 +130,12 @@ export class UI {
         ),
       ),
       h('div.hud-actions', null, this.actBtn, this.toolBtn, this.seedBtn, this.rideBtn, this.waterMeter),
+      h('div.cam-ctrl', null,
+        h('button', { title: 'Tourner la caméra à gauche', onclick: (e: Event) => { e.stopPropagation(); g.rotateCamera(Math.PI / 4); } }, '⟲'),
+        h('button.view', { title: 'Vue 1ʳᵉ personne / vue d\'ensemble', onclick: (e: Event) => { e.stopPropagation(); g.toggleView(); } }, '👁️'),
+        h('button', { title: 'Tourner la caméra à droite', onclick: (e: Event) => { e.stopPropagation(); g.rotateCamera(-Math.PI / 4); } }, '⟳'),
+      ),
+      h('div.crosshair'),
       this.joyHint,
     );
     // pointer events on interactive children only

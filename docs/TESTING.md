@@ -9,13 +9,14 @@
 | `node e2e/systems.mjs` | 20 vérifications de systèmes en conditions réelles : labour/semis/arrosage/récolte via les vrais boutons, coupe d'arbre et minage (outil auto), vente, restauration de la boutique, dialogue PNJ, construction d'un poulailler au doigt, adoption, sommeil → jour 2 → œuf, pêche, mine + échelle cachée + étage 2, mini-jeu de fête, pluie/automne/arc-en-ciel/hiver, **sauvegarde → rechargement de la page → Continuer**. |
 | `node e2e/explore.mjs` | Visite des 7 régions extérieures, apparition forcée de créatures/insectes/animaux sauvages, observation, artisanat, placement d'un canapé dans la maison. |
 | `node e2e/hamlet.mjs [url] [WxH]` | Parcours du hameau : sentier ferme → Clairefontaine, construction via la vraie UI de placement, arrivée du 1er villageois, nuit → production, registre (bouton d'action) → « Tout récupérer », dialogue villageois + souhait exaucé, menus, passants à Willowbrook (8 vérifications). |
+| `node e2e/camera.mjs [url]` | Vrais gestes de souris : glisser le bâtiment fantôme, flèche de précision, rotation, construction d'un poulailler tourné, débris non bloquants, rotation caméra au glisser, vue 1ʳᵉ personne (marche, hache) et retour (8 vérifications). |
 | `node e2e/look.mjs <url> <prefix> "<js>;;shot;;…"` | Captures d'écran scriptées pour vérifier un rendu. |
 | `node e2e/mobile.mjs <url>` | Build de production sur viewport téléphone paysage & portrait avec événements tactiles (joystick). |
 
 Les scripts e2e attendent le serveur de dev (`npm run dev -- --port 5173`) ou le build servi
 (`npx http-server game/dist -p 5180`), et Chromium (`/opt/pw-browsers`).
 
-Résultat de la dernière exécution (v1.1) : 31/31 tests unitaires, 20/20 vérifications systèmes, 8/8 vérifications hameau, 0 erreur
+Résultat de la dernière exécution (v1.2) : 31/31 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 8/8 caméra & placement, 0 erreur
 JavaScript sur l'ensemble des parcours.
 
 ## Android

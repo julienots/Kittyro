@@ -18,6 +18,21 @@ export function footprintOf(kind: string, x: number, z: number, rot: number) {
   return { x0: x, z0: z, x1: x + rw, z1: z + rd, w: rw, d: rd };
 }
 
+/** Rotate a point given relative to the footprint centre by the object's quarter turns (matches rotation.y = -rot·π/2). */
+export function rotLocal(x: number, z: number, rot: number): [number, number] {
+  const t = -rot * (Math.PI / 2);
+  const c = Math.cos(t), s = Math.sin(t);
+  return [x * c + z * s, -x * s + z * c];
+}
+
+/** Point just outside a building's front door, whatever its rotation. */
+export function doorPoint(kind: string, x: number, z: number, rot: number, out = 0.4): { x: number; z: number } {
+  const fp = footprintOf(kind, x, z, rot);
+  const [, d] = sizeOf(kind);
+  const [dx, dz] = rotLocal(0, d / 2 + out, rot);
+  return { x: (fp.x0 + fp.x1) / 2 + dx, z: (fp.z0 + fp.z1) / 2 + dz };
+}
+
 let uidCounter = 0;
 export const newUid = (p = 'o') => `${p}${Date.now().toString(36)}${(uidCounter++).toString(36)}`;
 

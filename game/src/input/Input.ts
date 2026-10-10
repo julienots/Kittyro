@@ -13,6 +13,8 @@ export class Input {
   onZoom: ((delta: number) => void) | null = null;
   onKey: ((key: string) => void) | null = null;
   onDrag: ((nx: number, ny: number, phase: 'start' | 'move' | 'end') => void) | null = null;
+  /** one-finger drag outside the joystick (or mouse drag): turn the camera / look around */
+  onLook: ((dx: number, dy: number) => void) | null = null;
   /** when true, single-finger drags go to onDrag (placement mode) instead of the joystick */
   dragMode = false;
   enabled = true;
@@ -21,7 +23,7 @@ export class Input {
   private joyId: number | null = null;
   private joyOrigin = { x: 0, y: 0 };
   private joyVec = { x: 0, y: 0 };
-  private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean }>();
+  private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean; lx: number; ly: number }>();
   private pinchDist = 0;
   private base: HTMLDivElement;
   private knob: HTMLDivElement;
@@ -62,9 +64,9 @@ export class Input {
   }
 
   private down = (e: PointerEvent) => {
-    if (!this.enabled) return;
+    if (!this.enabled && !this.dragMode) return;
     this.canvas.setPointerCapture?.(e.pointerId);
-    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false });
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false, lx: e.clientX, ly: e.clientY });
     if (this.pointers.size === 2) {
       const [a, b] = [...this.pointers.values()];
       this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -105,6 +107,12 @@ export class Input {
     }
     if (this.dragMode) {
       this.onDrag?.(...this.norm(e.clientX, e.clientY), 'move');
+      return;
+    }
+    if (e.pointerId !== this.joyId) {
+      if (p.moved) this.onLook?.(e.clientX - p.lx, e.clientY - p.ly);
+      p.lx = e.clientX;
+      p.ly = e.clientY;
       return;
     }
     if (e.pointerId === this.joyId) {
