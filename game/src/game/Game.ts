@@ -117,8 +117,8 @@ export class Game implements GameApi {
     this.particles.budget = this.renderer.profile.particles;
     this.weatherFx = new WeatherFX(this.particles, this.settings.quality === 'low' ? 400 : 900);
     const scene = this.renderer.scene;
-    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group, this.renderer.camera);
-    this.renderer.camera.add(this.fpHands.group);
+    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group);
+    this.renderer.overlay = this.fpHands;
     this.sky.setShadowSize(this.renderer.profile.shadow);
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
@@ -609,7 +609,9 @@ export class Game implements GameApi {
     this.fishing.update(dt);
     // camera & sky
     this.placement.update(dt);
-    this.fpHands.update(dt, this.player, { visible: fp && !this.title && !this.placement.active, turnSpeed: this.rig.turnSpeed, bob: this.rig.bob, tier: (t) => (this.ctx.state.player.tools as Record<string, number>)[t] ?? 0 });
+    this.fpHands.setAspect(this.renderer.camera.aspect);
+    this.fpHands.light(this.sky.sun, this.sky.hemi, this.sky.state.night);
+    this.fpHands.update(dt, this.player, { visible: fp && !this.title && !this.placement.active && !this.ui.modalOpen, turnSpeed: this.rig.turnSpeed, pitch: this.rig.fpPitch, tool: this.ctx.state.player.activeTool, tier: this.ctx.state.player.tools[this.ctx.state.player.activeTool] ?? 0 });
     if (this.placement.active) this.rig.update(dt, this.placement.center, new THREE.Vector3());
     else this.rig.update(dt, this.player.pos, this.player.vel);
     this.rig.updateSeeThrough(this.player.pos);

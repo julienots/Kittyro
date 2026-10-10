@@ -31,6 +31,9 @@ export class CameraRig {
   bob = 0;
   turnSpeed = 0;
   private bobT = 0;
+  private roll = 0;
+  private fovKick = 0;
+  private landDip = 0;
 
   constructor(public camera: THREE.PerspectiveCamera) {}
 
@@ -74,17 +77,34 @@ export class CameraRig {
 
   update(dt: number, follow: THREE.Vector3, velocity: THREE.Vector3): void {
     const prevYaw = this.yaw;
-    this.yaw = this.view === 'fp' ? this.yawTarget : damp(this.yaw, this.yawTarget, 8, dt);
+    this.yaw = damp(this.yaw, this.yawTarget, this.view === 'fp' ? 28 : 8, dt);
     this.turnSpeed = (this.yaw - prevYaw) / Math.max(dt, 1e-3);
     this.pitch = damp(this.pitch, this.pitchTarget, 8, dt);
     this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     if (this.view === 'fp') {
       const speed = Math.hypot(velocity.x, velocity.z);
-      this.bobT += dt * Math.min(speed, 6) * 2.2;
-      this.bob = Math.sin(this.bobT * 2) * 0.035 * Math.min(1, speed / 3);
+      const k = Math.min(1, speed / 3.6);
+      const prevBob = Math.sin(this.bobT * 2);
+      this.bobT += dt * Math.min(speed, 7) * 1.85;
+      // figure-eight head bob: two dips per stride vertically, one sway sideways
+      this.bob = -Math.abs(Math.sin(this.bobT)) * 0.05 * k + 0.025 * k;
+      const lateral = Math.sin(this.bobT) * 0.028 * k;
+      // a tiny extra dip when a foot lands
+      if (prevBob > 0 && Math.sin(this.bobT * 2) <= 0 && k > 0.3) this.landDip = 0.012 * k;
+      this.landDip = damp(this.landDip, 0, 10, dt);
+      // lean into turns & strafes
+      const side = velocity.x * this.right.x + velocity.z * this.right.z;
+      this.roll = damp(this.roll, THREE.MathUtils.clamp(-this.turnSpeed * 0.01 - side * 0.012, -0.08, 0.08) + Math.sin(this.bobT) * 0.006 * k, 8, dt);
+      // wider field of view when going fast (horse, speed buff)
+      this.fovKick = damp(this.fovKick, THREE.MathUtils.clamp((speed - 3.9) * 2.4, 0, 10), 4, dt);
+      const fov = 72 + this.fovKick;
+      if (Math.abs(this.camera.fov - fov) > 0.05) {
+        this.camera.fov = fov;
+        this.camera.updateProjectionMatrix();
+      }
       this.cur.copy(follow);
-      this.camera.position.set(follow.x, follow.y + this.eyeHeight + this.bob, follow.z);
+      this.camera.position.set(follow.x + this.right.x * lateral, follow.y + this.eyeHeight + this.bob - this.landDip, follow.z + this.right.z * lateral);
       if (this.shakeT > 0) {
         this.shakeT -= dt;
         this.camera.position.x += (Math.random() - 0.5) * this.shakeAmp * 0.5;
@@ -92,6 +112,7 @@ export class CameraRig {
       }
       const cp = Math.cos(this.fpPitch);
       this.camera.lookAt(this.camera.position.x + this.forward.x * cp, this.camera.position.y + Math.sin(this.fpPitch), this.camera.position.z + this.forward.z * cp);
+      this.camera.rotateZ(this.roll);
       return;
     }
     // look slightly ahead in the walking direction

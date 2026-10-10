@@ -135,6 +135,7 @@ export class UI {
         h('button.view', { title: 'Vue 1ʳᵉ personne / vue d\'ensemble', onclick: (e: Event) => { e.stopPropagation(); g.toggleView(); } }, '👁️'),
         h('button', { title: 'Tourner la caméra à droite', onclick: (e: Event) => { e.stopPropagation(); g.rotateCamera(-Math.PI / 4); } }, '⟳'),
       ),
+      h('div.fp-vignette'),
       h('div.crosshair'),
       this.joyHint,
     );

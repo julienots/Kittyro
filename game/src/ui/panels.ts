@@ -866,7 +866,7 @@ function settings(ui: UI): void {
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
     help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.2 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.3 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
 }
 

@@ -79,3 +79,19 @@ affichées une seule fois (désactivables), carte de la vallée illustrée avec 
   caméra le suit et défile au bord de l'écran, flèches case par case, **rotation de tous les bâtiments**
   (portes, animaux et villageois suivent), herbes/cailloux/souches dessous ramassés automatiquement,
   sélection plus tolérante en mode « Déplacer ».
+
+## Première personne soignée (v1.3)
+- Mains rendues dans une passe séparée (scène, caméra et profondeur propres) : toujours nettes, jamais
+  dans les murs ; éclairage calé sur le soleil et le ciel du monde ; contour illustré.
+- Main articulée : paume arrondie, 4 doigts à 3 phalanges + pouce à 2 phalanges, ongles ; les doigts
+  se referment autour du manche, se détendent et bougent doucement à vide (vague décalée entre doigts).
+  Avant-bras nu (t-shirt) ou manche avec revers (pull, sweat, ciré…), aux couleurs de la tenue.
+- Outils détaillés propres à la vue : hache à lame biseautée et manche gainé de cuir, pioche courbe,
+  houe, arrosoir à anse arrière et pomme, canne avec moulinet et anneaux, faucille, filet. L'outil
+  équipé est toujours tenu, tourné pour montrer sa face ; changer d'outil baisse puis relève la main.
+- Gestes : anticipation → frappe → suivi pour hache/pioche/houe, arrosoir qu'on incline, lancer et
+  moulinet (la main gauche mouline), main tendue qui attrape, nourriture portée à la bouche, joie.
+- Déplacement : balancement de tête en 8 (deux creux par foulée + oscillation latérale), petit appui à
+  chaque pas, inclinaison dans les virages et pas chassés, champ de vision qui s'élargit à grande
+  vitesse, regard lissé ; les bras suivent le pas, traînent derrière les mouvements de tête et
+  respirent au repos ; léger vignettage.
