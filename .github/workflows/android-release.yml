@@ -12,6 +12,10 @@ name: Android release (AdMob)
 
 on:
   workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'versionCode (laisser vide = calculé depuis game/package.json ; doit être plus grand que le dernier envoyé sur Play)'
+        required: false
   push:
     tags: ['v*']
 
@@ -69,6 +73,7 @@ jobs:
           ADMOB_INTERSTITIAL_ID: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
         run: |
           ARGS=""
+          [ -n "${{ github.event.inputs.version_code }}" ] && ARGS="$ARGS -PVERSION_CODE=${{ github.event.inputs.version_code }}"
           [ -n "$ADMOB_APP_ID" ] && ARGS="$ARGS -PADMOB_APP_ID=$ADMOB_APP_ID"
           [ -n "$ADMOB_REWARDED_ID" ] && ARGS="$ARGS -PADMOB_REWARDED_ID=$ADMOB_REWARDED_ID"
           [ -n "$ADMOB_INTERSTITIAL_ID" ] && ARGS="$ARGS -PADMOB_INTERSTITIAL_ID=$ADMOB_INTERSTITIAL_ID"

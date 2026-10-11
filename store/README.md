@@ -70,8 +70,8 @@ bloqué dans l'environnement où ce build a été fait. Donc :
   4. Dans AdMob → *Confidentialité et messagerie* → créer le message **RGPD** (obligatoire en Europe)
      et publier ; le jeu l'affiche automatiquement au 1er lancement.
   5. Publier `app-ads.txt` (ligne fournie par AdMob) à la racine du site déclaré dans la fiche Play.
-  6. Si la version sans pub a déjà été envoyée avec le code 10400, relancez avec un code plus
-     grand : `gradle bundleRelease -PVERSION_CODE=10401 …` (ou passez le jeu en 1.4.1).
+  6. Si la version sans pub a déjà été envoyée (code 10400), tapez `10401` dans la case
+     « version_code » au moment de cliquer *Run workflow* (en local : `-PVERSION_CODE=10401`).
   7. Dans la Play Console, mettre à jour : *Annonces = Oui*, *Sécurité des données* et
      *ID publicitaire* selon `data-safety.md`.
 
