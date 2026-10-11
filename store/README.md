@@ -10,6 +10,7 @@ demandent **votre** compte Google.
 | `icon-512.png`, `feature-graphic.png`, `screenshots/` | Visuels de la fiche |
 | `privacy-policy.html` | Politique de confidentialité FR/EN à héberger |
 | `data-safety.md` | Réponses : sécurité des données, classification, public cible |
+| `GUIDE-PLAY-CONSOLE.md` | **Chaque bouton de la Play Console, de A à Z** |
 
 ## 1. La clé (à lire absolument)
 
