@@ -23,6 +23,7 @@ import { HOUSE_ROOMS } from '../world/houseLayout';
 import type { Appearance, ToolId } from '../state/types';
 import type { Quality, ControlMode } from '../save/Settings';
 import { CROP_BY_ID } from '../data/crops';
+import { AD_INFO, AD_LIMITS, freeEligible, type AdPlacement } from '../systems/AdRewards';
 import { HAMLET_BUILDINGS, HAMLET_BY_ID, HAMLET_GOALS, VILLAGER_TRAITS, type TraitId } from '../data/hamlet';
 
 type Tab = { id: string; label: string };
@@ -331,8 +332,11 @@ function shop(ui: UI, shopId: string): void {
       h('span.price', null, `${currencyIcon(o.currency)} ${fmt(o.price)}`),
       o.owned ? h('span.muted', null, '✓') : h(`button.btn.small${o.locked ? '.disabled' : ''}`, { onclick: () => { if (g.ctx.shop.buy(o, 1)) { g.audio.play('coin'); ui.toast(`${o.name} acheté !`, o.icon, 'good'); ui.setPanelBody(...render()); } else g.audio.play('error'); } }, 'Acheter'),
       o.kind === 'item' && !o.locked ? h('button.btn.small.ghost', { onclick: () => { if (g.ctx.shop.buy(o, 5)) { g.audio.play('coin'); ui.setPanelBody(...render()); } } }, '×5') : null,
+      adsOn && freeEligible(o) && g.ctx.adRewards.left('free_offer') > 0 ? h('button.btn.small.lav', { title: 'Regarder une pub pour l\'obtenir gratuitement', onclick: async () => { if (await g.watchAd('free_offer', o)) ui.setPanelBody(...render()); } }, '📺 Gratuit') : null,
     );
-    return [wallet, h('div.list', null, ...offers.map(row))];
+    const adsOn = g.adsAvailable();
+    const adBanner = adsOn ? h('div.adrow', null, h('span', null, `📺 Articles offerts contre une courte pub : ${g.ctx.adRewards.left('free_offer')}/${AD_LIMITS.free_offer} aujourd'hui`), shopId === 'boutique' && g.ctx.adRewards.left('gems') > 0 ? h('button.btn.small.lav', { onclick: async () => { if (await g.watchAd('gems')) ui.setPanelBody(...render()); } }, '📺 +3 💎') : null) : null;
+    return [wallet, adBanner, h('div.list', null, ...offers.map(row))];
   };
   const extra = shopId !== 'boutique' ? null : h('div.muted', { style: { marginRight: '8px' } }, 'Cosmétiques uniquement');
   ui.showPanel('shop', SHOP_NAMES[shopId] ?? 'Boutique', render(), { headExtra: extra ?? undefined });
@@ -498,6 +502,7 @@ function hamlet(ui: UI, tab = 'overview'): void {
           h('li', null, '💭 Une bulle au-dessus d\'un villageois = un souhait. Exaucez-le pour des pièces, des gemmes et de l\'amitié.'),
           h('li', null, '🔑 Les matériaux du hameau (poutres, pierre taillée, chaume) se fabriquent à l\'atelier ou sortent de la scierie, de la carrière et des champs.'),
         )),
+        g.adsAvailable() && g.ctx.adRewards.can('hamlet_boost') ? h('div.adrow', null, h('span', null, '📺 Production express : vos villageois travaillent une journée de plus, tout de suite.'), h('button.btn.small.lav', { onclick: async () => { if (await g.watchAd('hamlet_boost')) ui.setPanelBody(...render()); } }, '📺 Regarder')) : null,
         inHamlet ? h('div.center', { style: { marginTop: '10px' } }, h('button.btn.small', { onclick: () => build(ui) }, '🔨 Construire')) : h('p.muted.center', null, 'Clairefontaine se trouve au sud de votre ferme.'),
       ];
     }
@@ -731,6 +736,7 @@ function pass(ui: UI): void {
       h('p', null, 'Gagnez des points en jouant comme vous aimez : récolter, pêcher, explorer, cuisiner... Aucune obligation, aucun achat réel.'),
       h('div.row', null, h('div.progress.grow', null, h('i', { style: { width: `${(p.points % PASS_POINTS_PER_TIER)}%` } })), h('b', null, `Palier ${tier}/${PASS_TIERS}`)),
       h('div.passrow', { style: { margin: '10px 0 6px' } }, h('span'), h('b.center', null, '🌿 Gratuit'), h('b.center', null, '🌟 Cozy Pass+')),
+      g.adsAvailable() && g.ctx.adRewards.can('pass_points') ? h('div.adrow', null, h('span', null, `📺 +30 points de pass (${g.ctx.adRewards.left('pass_points')}/${AD_LIMITS.pass_points} aujourd'hui)`), h('button.btn.small.lav', { onclick: async () => { if (await g.watchAd('pass_points')) ui.setPanelBody(...render()); } }, '📺 Regarder')) : null,
       p.premium ? null : h('div.center', { style: { margin: '6px 0 12px' } }, h('button.btn.lav', { onclick: () => { if (g.ctx.shop.buyPremiumPass()) { g.audio.play('gem'); ui.confetti(); ui.setPanelBody(...render()); } } }, `Débloquer Cozy Pass+ (💎 ${PASS_PREMIUM_GEMS})`), h('div.muted', null, 'Les Moon Gems se gagnent en jeu (quêtes, collections, niveaux).')),
       h('div.col', null, ...rows),
     ];
@@ -828,6 +834,7 @@ function settings(ui: UI): void {
       h('button.btn.small', { onclick: () => shop(ui, 'boutique') }, '🛍️ Boutique'),
       h('button.btn.small.ghost', { onclick: () => festivalsInfo(ui) }, '🎉 Fêtes'),
       h('button.btn.small.ghost', { onclick: () => hamlet(ui) }, '🏘️ Hameau'),
+      g.adsAvailable() ? h('button.btn.small.lav', { onclick: () => adRewards(ui) }, '📺 Récompenses') : null,
     ),
     h('h3', null, '🎮 Contrôles'),
     chips<ControlMode>([['both', 'Joystick + toucher'], ['joystick', 'Joystick'], ['tap', 'Toucher pour aller']], s.controls, (v) => set('controls', v)),
@@ -855,6 +862,13 @@ function settings(ui: UI): void {
     slider('music', '🎼 Musique', 'Les mélodies qui changent selon la région, la météo et l\'heure.'),
     slider('sfx', '🔔 Effets', 'Outils, récoltes, pièces, menus…'),
     slider('ambience', '🌿 Ambiance', 'Vent, rivière, pluie, oiseaux et grillons.'),
+    h('h3', null, '📺 Publicités'),
+    help(g.adsAvailable()
+      ? 'Mossy Meadows est gratuit grâce à quelques publicités. Une courte pub peut apparaître de temps en temps, seulement à un moment calme (nouvelle journée, voyage) et jamais pendant que vous jouez. Les pubs « à regarder » sont toujours facultatives et donnent une récompense (gemmes, article offert, gains doublés…).'
+      : 'Aucune publicité n\'est active dans cette version du jeu.'),
+    g.adsAvailable() ? h('div.row', { style: { flexWrap: 'wrap' } },
+      h('button.btn.small.lav', { onclick: () => adRewards(ui) }, '📺 Voir les récompenses'),
+      g.adsPrivacy().required ? h('button.btn.small.ghost', { onclick: () => g.adsPrivacy().show() }, '🔒 Choix de confidentialité') : null) : null,
     h('h3', null, '💾 Sauvegarde'),
     h('p.muted', null, `${st.player.name} · ${st.player.farmName} · Jour ${st.time.day} · ${Math.floor(st.playSeconds / 60)} min de jeu.`),
     help('Le jeu se sauvegarde tout seul toutes les 40 secondes, chaque matin et quand vous quittez l\'application. « Exporter » crée un code texte à garder précieusement (pour changer de téléphone) ; « Importer » le recharge.'),
@@ -866,8 +880,28 @@ function settings(ui: UI): void {
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
     help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.3.2 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.4.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
+}
+
+// ====================================================================== rewarded ads
+function adRewards(ui: UI): void {
+  const g = ui.g;
+  const order: AdPlacement[] = ['gems', 'double_earnings', 'hamlet_boost', 'pass_points', 'free_offer'];
+  const render = (): any[] => [
+    h('p.muted', null, 'Regardez une courte vidéo pour recevoir un petit cadeau. Toujours facultatif — le jeu se joue entièrement sans.'),
+    h('div.list', null, ...order.map((p) => {
+      const info = AD_INFO[p];
+      const left = g.ctx.adRewards.left(p);
+      const can = g.ctx.adRewards.can(p);
+      const action = p === 'free_offer'
+        ? h('button.btn.small.ghost', { onclick: () => shop(ui, 'general') }, '🛍️ Boutiques')
+        : h(`button.btn.small.lav${can ? '' : '.disabled'}`, { onclick: async () => { if (await g.watchAd(p)) ui.setPanelBody(...render()); } }, '📺 Regarder');
+      const extra = p === 'double_earnings' && g.ctx.adRewards.doubleAmount() ? ` (+${fmt(g.ctx.adRewards.doubleAmount())} 🪙)` : '';
+      return h('div.item-row', null, h('span.em', null, info.icon), h('div.info', null, h('b', null, `${info.name}${extra}`), h('div.muted', null, info.desc), h('div', { style: { fontSize: '12px', fontWeight: '600', color: '#9a80e8' } }, `Aujourd'hui : ${left}/${AD_LIMITS[p]}`)), action);
+    })),
+  ];
+  ui.showPanel('adRewards', '📺 Récompenses', render(), { size: 'narrow' });
 }
 
 // ====================================================================== game guide
@@ -930,6 +964,7 @@ function daySummary(ui: UI, data: { day: number; earned: number; weather: string
     h('div', { style: { fontSize: '60px' } }, data.passedOut ? '😴' : '🌅'),
     h('p', null, data.passedOut ? 'Vous vous êtes endormi(e) tard... Rien de grave, une bonne nuit et c\'est reparti !' : 'Une nouvelle journée commence à Green Valley.'),
     data.earned ? h('p', null, `Gains d'hier : 🪙 ${fmt(data.earned)}`) : null,
+    data.earned && ui.g.adsAvailable() && ui.g.ctx.adRewards.can('double_earnings') ? h('div', { style: { margin: '6px 0' } }, h('button.btn.small.lav', { onclick: async (e: Event) => { const b = e.currentTarget as HTMLButtonElement; if (await ui.g.watchAd('double_earnings')) { b.textContent = '✓ Gains doublés'; b.disabled = true; } } }, `📺 Doubler les gains (+${fmt(ui.g.ctx.adRewards.doubleAmount())} 🪙)`)) : null,
     h('p', null, `Météo du jour : ${data.weather} · Demain : ${data.forecast}`),
     data.fest ? h('p', { style: { fontWeight: '600', color: '#e06a8a' } }, data.fest) : null,
     data.hamlet ? h('div.detail', { style: { textAlign: 'left' } }, h('span.em', null, '🏘️'), h('div', null, h('b', null, 'Production de Clairefontaine'), h('div.muted', null, `${data.hamlet} — à récupérer au registre 📒`))) : null,
@@ -938,7 +973,7 @@ function daySummary(ui: UI, data: { day: number; earned: number; weather: string
 }
 
 export const PANELS = {
-  inventory, quests, collections, map, shop, sell, craft, restore, build, houseDecor, guide, hamlet, hamletBuilding, villager, villagerGift, upgrades, seeds, gift, friends, animal, elevator, pass, wardrobe, settings, festivalsInfo, daySummary,
+  inventory, quests, collections, map, shop, sell, craft, restore, build, houseDecor, guide, adRewards, hamlet, hamletBuilding, villager, villagerGift, upgrades, seeds, gift, friends, animal, elevator, pass, wardrobe, settings, festivalsInfo, daySummary,
 };
 export { BUILDING_BY_ID, DECOR, TOOL_BY_ID };
 export type { ToolId };

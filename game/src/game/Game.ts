@@ -10,6 +10,9 @@ import { CameraRig } from '../render/CameraRig';
 import { Particles, PF } from '../render/Particles';
 import { WeatherFX } from '../render/WeatherFX';
 import { AmbientLife } from '../render/AmbientLife';
+import { ads } from '../platform/Ads';
+import type { AdPlacement } from '../systems/AdRewards';
+import type { Offer } from '../systems/Shop';
 import { globalUniforms } from '../render/Materials';
 import { World, type Interactable } from '../world/World';
 import { T, WALKABLE } from '../world/Layout';
@@ -126,6 +129,10 @@ export class Game implements GameApi {
     scene.add(this.tapMarker);
     this.applyInputSettings();
     window.addEventListener('resize', () => this.renderer.resize());
+    ads.onShow = (on) => {
+      this.setPaused(on);
+      audio.setMuted(on);
+    };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
     window.addEventListener('pagehide', () => this.save());
   }
@@ -461,10 +468,11 @@ export class Game implements GameApi {
     // default arrival anchors
     const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry' };
     audio.play('door');
-    this.ui.fade(() => {
+    // a rare ad may play at this natural break (never mid-action)
+    ads.breakpoint().then(() => this.ui.fade(() => {
       this.loadRegion(region, anchor ?? defaults[region] ?? null);
       this.save();
-    });
+    }));
   }
 
   goMine(floor: number): void {
@@ -531,6 +539,7 @@ export class Game implements GameApi {
     const st = this.ctx.state;
     const earned = Math.max(0, st.stats.coinsEarned ?? 0) - this.lastDayCoins;
     this.lastDayCoins = st.stats.coinsEarned ?? 0;
+    this.ctx.adRewards.setYesterdayEarnings(earned);
     if (passedOut || this.world.region !== 'house') this.loadRegion('house', 'bed', true);
     const fest = this.ctx.festivals.today();
     this.ui.openPanel('daySummary', {
@@ -544,10 +553,10 @@ export class Game implements GameApi {
   }
 
   sleep(): void {
-    this.ui.fade(() => {
+    ads.breakpoint().then(() => this.ui.fade(() => {
       audio.play('sleep');
       this.ctx.time.sleep(false);
-    }, '💤 Bonne nuit…', true);
+    }, '💤 Bonne nuit…', true));
   }
 
   private placePuddles(): void {
@@ -1522,6 +1531,39 @@ export class Game implements GameApi {
     this.player.rebuild();
     this.fpHands.build(this.ctx.state.player.look);
     this.applyView(this.settings.view);
+  }
+
+  // ------------------------------------------------------------ ads
+  adsAvailable(): boolean {
+    return ads.available();
+  }
+
+  adsPrivacy(): { required: boolean; show: () => void } {
+    return { required: ads.privacyOptionsRequired(), show: () => ads.showPrivacyOptions() };
+  }
+
+  async watchAd(p: AdPlacement, offer?: Offer): Promise<string | null> {
+    if (!ads.available()) return null;
+    if (!this.ctx.adRewards.can(p)) {
+      this.ui.toast('Plus de récompense de ce type aujourd\'hui — revenez demain !', '📺');
+      return null;
+    }
+    if (!ads.ready('rewarded')) {
+      this.ui.toast('Aucune pub disponible pour le moment, réessayez dans un instant.', '📺');
+      return null;
+    }
+    const ok = await ads.rewarded();
+    if (!ok) {
+      this.ui.toast('Pub interrompue : pas de récompense cette fois.', '📺');
+      return null;
+    }
+    const text = this.ctx.adRewards.grant(p, offer);
+    if (text) {
+      audio.play('gem');
+      this.ui.toast(`Merci ! ${text}`, '🎁', 'good');
+      this.save();
+    }
+    return text;
   }
 
   // ------------------------------------------------------------ camera & first person

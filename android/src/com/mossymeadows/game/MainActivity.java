@@ -22,6 +22,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.Charset;
 
 /**
@@ -32,6 +35,7 @@ import java.nio.charset.Charset;
 public class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.mossymeadows.local/";
     private WebView web;
+    private AdsBackend ads = new NoAds();
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -62,6 +66,9 @@ public class MainActivity extends Activity {
         s.setCacheMode(WebSettings.LOAD_NO_CACHE);
         s.setTextZoom(100);
         web.addJavascriptInterface(new NativeBridge(), "MossyNative");
+        ads = createAds();
+        web.addJavascriptInterface(new AdsBridge(), "MossyAds");
+        registerBackCallback();
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -143,7 +150,95 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         // Back button: close panels / open the menu instead of quitting abruptly.
-        web.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))", null);
+        backToGame();
+    }
+
+    private void backToGame() {
+        if (web != null) web.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))", null);
+    }
+
+    /**
+     * Android 13+ (and mandatory when targeting Android 16): back gestures go through
+     * OnBackInvokedDispatcher instead of onBackPressed(). Registered by reflection so the
+     * shell still compiles against older SDKs.
+     */
+    private void registerBackCallback() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        try {
+            Object dispatcher = getClass().getMethod("getOnBackInvokedDispatcher").invoke(this);
+            Class<?> cb = Class.forName("android.window.OnBackInvokedCallback");
+            Object callback = Proxy.newProxyInstance(cb.getClassLoader(), new Class<?>[]{cb}, new InvocationHandler() {
+                @Override
+                public Object invoke(Object proxy, Method method, Object[] args) {
+                    if ("onBackInvoked".equals(method.getName())) backToGame();
+                    else if ("hashCode".equals(method.getName())) return System.identityHashCode(proxy);
+                    else if ("equals".equals(method.getName())) return proxy == args[0];
+                    return null;
+                }
+            });
+            dispatcher.getClass().getMethod("registerOnBackInvokedCallback", int.class, cb).invoke(dispatcher, 0, callback);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** The AdMob build ships AdMobBackend; the plain build falls back to NoAds. */
+    private AdsBackend createAds() {
+        try {
+            Class<?> c = Class.forName("com.mossymeadows.game.AdMobBackend");
+            return (AdsBackend) c.getConstructor(MainActivity.class).newInstance(this);
+        } catch (Throwable t) {
+            return new NoAds();
+        }
+    }
+
+    /** Called by the ads backend when a full-screen ad closes. */
+    void adDone(final String requestId, final boolean rewarded) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                hideSystemUi();
+                if (web != null) web.evaluateJavascript("window.__mossyAdDone && window.__mossyAdDone('" + requestId + "'," + rewarded + ")", null);
+            }
+        });
+    }
+
+    /** JavaScript side of the ads (window.MossyAds). */
+    private class AdsBridge {
+        @JavascriptInterface
+        public boolean isAvailable() {
+            return ads.isAvailable();
+        }
+
+        @JavascriptInterface
+        public boolean isReady(String kind) {
+            return ads.isReady(kind);
+        }
+
+        @JavascriptInterface
+        public void show(final String kind, final String requestId) {
+            if (requestId == null || !requestId.matches("[A-Za-z0-9_]{1,32}")) return;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    ads.show(kind, requestId);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean privacyOptionsRequired() {
+            return ads.privacyOptionsRequired();
+        }
+
+        @JavascriptInterface
+        public void showPrivacyOptions() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    ads.showPrivacyOptions();
+                }
+            });
+        }
     }
 
     @Override

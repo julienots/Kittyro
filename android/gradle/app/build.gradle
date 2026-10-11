@@ -1,0 +1,70 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Same version as the web game (game/package.json) so both builds stay in step.
+def pkg = new groovy.json.JsonSlurper().parse(rootProject.file('../../game/package.json'))
+def (maj, min, pat) = pkg.version.tokenize('.').collect { it as int }
+
+// Upload key: android/release.jks + android/release.properties (or CI env vars).
+def keyProps = new Properties()
+def keyFile = rootProject.file('../release.properties')
+if (keyFile.exists()) keyFile.withInputStream { keyProps.load(it) }
+def ksPass = System.getenv('KEYSTORE_PASSWORD') ?: keyProps.getProperty('storePassword')
+def ksAlias = System.getenv('KEY_ALIAS') ?: keyProps.getProperty('keyAlias', 'mossy')
+def ksFile = System.getenv('KEYSTORE_FILE') ?: rootProject.file('../release.jks').path
+
+android {
+    namespace 'com.mossymeadows.game'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.mossymeadows.game'
+        minSdk 24
+        targetSdk 36
+        versionCode((project.findProperty('VERSION_CODE') ?: (maj * 10000 + min * 100 + pat)) as int)
+        versionName pkg.version
+        manifestPlaceholders = [admobAppId: project.property('ADMOB_APP_ID')]
+        resValue 'string', 'admob_rewarded_id', project.property('ADMOB_REWARDED_ID')
+        resValue 'string', 'admob_interstitial_id', project.property('ADMOB_INTERSTITIAL_ID')
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(ksFile)
+            storePassword ksPass
+            keyAlias ksAlias
+            keyPassword System.getenv('KEY_PASSWORD') ?: ksPass
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ksPass ? signingConfigs.release : null
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ['../../src', '../../admob/src']
+            res.srcDirs = ['../../res']
+            // web build copied here by the CI workflow (game/dist/index.html -> www/index.html)
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-ads:23.6.0'
+    implementation 'com.google.android.ump:user-messaging-platform:3.1.0'
+}

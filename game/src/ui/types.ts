@@ -36,6 +36,10 @@ export interface GameApi {
   startMinigame(id: string): void;
   previewLook(look: Appearance | null): void;
   rotateCamera(d: number): void;
+  /** Optional rewarded ad; resolves with the reward text, or null. */
+  watchAd(p: import('../systems/AdRewards').AdPlacement, offer?: import('../systems/Shop').Offer): Promise<string | null>;
+  adsAvailable(): boolean;
+  adsPrivacy(): { required: boolean; show: () => void };
   toggleView(): void;
   readonly view: 'iso' | 'fp';
 }

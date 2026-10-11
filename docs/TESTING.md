@@ -11,18 +11,19 @@
 | `node e2e/hamlet.mjs [url] [WxH]` | Parcours du hameau : sentier ferme → Clairefontaine, construction via la vraie UI de placement, arrivée du 1er villageois, nuit → production, registre (bouton d'action) → « Tout récupérer », dialogue villageois + souhait exaucé, menus, passants à Willowbrook (8 vérifications). |
 | `node e2e/camera.mjs [url]` | Vrais gestes de souris : glisser le bâtiment fantôme, flèche de précision, rotation, construction d'un poulailler tourné, débris non bloquants, rotation caméra au glisser, vue 1ʳᵉ personne (marche, hache), **deux doigts simultanés (joystick + regard)** et retour (9 vérifications). |
 | `node e2e/look.mjs <url> <prefix> "<js>;;shot;;…"` | Captures d'écran scriptées pour vérifier un rendu. |
+| `node e2e/store.mjs [url] [dossier]` | Captures 1920×1080 pour la fiche Play Store (ferme, hameau, registre, village au crépuscule, 1ʳᵉ personne, carte) dans `store/screenshots`. |
 | `node e2e/mobile.mjs <url>` | Build de production sur viewport téléphone paysage & portrait avec événements tactiles (joystick). |
 
 Les scripts e2e attendent le serveur de dev (`npm run dev -- --port 5173`) ou le build servi
 (`npx http-server game/dist -p 5180`), et Chromium (`/opt/pw-browsers`).
 
-Résultat de la dernière exécution (v1.2) : 31/31 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 8/8 caméra & placement, 0 erreur
+Résultat de la dernière exécution (v1.4.0) : 32/32 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 8/8 caméra & placement, 0 erreur
 JavaScript sur l'ensemble des parcours.
 
 ## Android
 
 `android/build.sh` vérifie chaque APK avec `apksigner verify` (schémas v2 + v3). Contrôlé avec
-`aapt dump badging` : package `com.mossymeadows.game`, minSdk 24, targetSdk 34, icônes toutes
+`aapt dump badging` : package `com.mossymeadows.game`, minSdk 24, targetSdk 36, icônes toutes
 densités, `resources.arsc` non compressé, `classes.dex` présent, `debuggable` uniquement sur l'APK debug.
 
 **Limite honnête :** aucun émulateur ni appareil Android n'est disponible dans l'environnement de

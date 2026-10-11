@@ -1,0 +1,18 @@
+// AdMob build of Mossy Meadows (needs internet access to Google's Maven repository).
+// The ad-free build doesn't need Gradle at all: see android/build.sh.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'MossyMeadows'
+include ':app'

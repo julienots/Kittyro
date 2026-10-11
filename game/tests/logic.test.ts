@@ -349,3 +349,33 @@ describe('hamlet (Clairefontaine)', () => {
     expect(s.regions.hamlet.unlocked).toBe(true);
   });
 });
+
+describe('rewarded ads (always optional, capped per day)', () => {
+  it('daily limits, free offers and doubled earnings', () => {
+    const c = fresh();
+    const gems = c.state.player.gems;
+    for (let i = 0; i < 5; i++) expect(c.adRewards.grant('gems')).toBe('+3 💎');
+    expect(c.adRewards.grant('gems')).toBeNull(); // 5 per day
+    expect(c.state.player.gems).toBe(gems + 15);
+    // doubled earnings need yesterday's sales
+    expect(c.adRewards.can('double_earnings')).toBe(false);
+    c.adRewards.setYesterdayEarnings(5000);
+    expect(c.adRewards.doubleAmount()).toBe(2000);
+    const coins = c.state.player.coins;
+    c.adRewards.grant('double_earnings');
+    expect(c.state.player.coins).toBe(coins + 2000);
+    expect(c.adRewards.can('double_earnings')).toBe(false);
+    // a cheap shop offer can be unlocked for free, expensive/animal ones cannot
+    const all = ['general', 'florist', 'boutique'].flatMap((id) => c.shop.offers(id));
+    const seeds = all.find((o) => o.id === 'seed_lettuce')!;
+    expect(c.adRewards.grant('free_offer', seeds)).toBeNull(); // too cheap to be worth an ad
+    const deco = all.find((o) => o.kind === 'decor' && o.currency === 'coins' && o.price >= 100 && !o.locked)!;
+    const before = c.state.decorOwned[deco.id] ?? 0;
+    expect(c.adRewards.grant('free_offer', deco)).not.toBeNull();
+    expect(c.state.decorOwned[deco.id]).toBe(before + 1);
+    // limits reset the next day
+    c.time.sleep();
+    expect(c.adRewards.left('gems')).toBe(5);
+    expect(c.adRewards.can('hamlet_boost')).toBe(false); // no hamlet workers yet
+  });
+});

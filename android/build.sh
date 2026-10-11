@@ -34,7 +34,7 @@ javac -nowarn -Xlint:-options --release 8 -classpath "$ANDROID_JAR" -d "$OUT/cla
 link() { # $1 = out, extra args...
   local out=$1; shift
   aapt2 link -o "$out" -I "$ANDROID_JAR" --manifest AndroidManifest.xml -A "$OUT/assets" "$OUT/res.zip" \
-    --min-sdk-version 24 --target-sdk-version 34 --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" --auto-add-overlay "$@"
+    --min-sdk-version 24 --target-sdk-version 36 --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" --auto-add-overlay "$@"
 }
 
 add_dex() { python3 - "$1" "$OUT/classes.dex" <<'PY'

@@ -106,3 +106,16 @@ affichées une seule fois (désactivables), carte de la vallée illustrée avec 
 Outils en 1ʳᵉ personne orientés pour l'usage : tranchant de la hache, pointe de la pioche, lame de la houe
 et bec de l'arrosoir dirigés vers l'avant, vers le point de visée ; outils penchés vers l'avant, prêts à frapper ;
 faucille couchée, la lame balayant vers l'avant-gauche.
+
+## v1.4.0 — publicités & Play Store
+- **Pubs avec récompense (toujours facultatives)**, limitées par jour : +3 💎 (5/j), doubler les gains
+  d'hier (1/j, plafonné à 2000 🪙), production express du hameau (1/j), +30 points de pass (2/j),
+  objet gratuit en boutique (3/j, objets entre 100 et 2500 🪙 uniquement ; jamais d'animaux ni de sac).
+  Panneau « 📺 Récompenses » dans Paramètres.
+- **Interstitiels rares** uniquement aux pauses naturelles (voyage, coucher) : jamais dans les
+  6 premières minutes, ≥ 8 min d'écart, pas dans les 10 min suivant une pub récompensée, max 4/h.
+  Le jeu se met en pause et coupe le son pendant la pub.
+- Consentement RGPD (Google UMP) au 1er lancement, modifiable dans Paramètres → Publicités.
+- Android : targetSdk 36, retour prédictif (Android 13+), `isGame`. Build AdMob via Gradle/GitHub Actions
+  (`android/gradle`), build sans pub via `android/build.sh`.
+- Kit Play Store dans `store/` : textes FR/EN, visuels, politique de confidentialité, formulaires.

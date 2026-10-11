@@ -1,0 +1,83 @@
+# Builds the Play Store bundle WITH AdMob ads, signed with your upload key.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   KEYSTORE_BASE64        base64 of android/release.jks   (base64 -w0 android/release.jks)
+#   KEYSTORE_PASSWORD      storePassword from android/release.properties
+#   ADMOB_APP_ID           ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY   (optional: Google test id if empty)
+#   ADMOB_REWARDED_ID      ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ   (optional)
+#   ADMOB_INTERSTITIAL_ID  ca-app-pub-XXXXXXXXXXXXXXXX/WWWWWWWWWW   (optional)
+# Run it from the Actions tab ("Run workflow") or push a tag like v1.4.0.
+# The signed .aab is attached to the run as an artifact.
+name: Android release (AdMob)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Web build + tests
+        working-directory: game
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Copy game into the Android assets
+        run: |
+          mkdir -p android/gradle/app/src/main/assets/www
+          cp game/dist/index.html android/gradle/app/src/main/assets/www/index.html
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::Add the KEYSTORE_BASE64 secret (see the top of this file)"; exit 1; fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+      - name: Bundle (AAB) with AdMob
+        working-directory: android/gradle
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: mossy
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
+          ADMOB_INTERSTITIAL_ID: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
+        run: |
+          ARGS=""
+          [ -n "$ADMOB_APP_ID" ] && ARGS="$ARGS -PADMOB_APP_ID=$ADMOB_APP_ID"
+          [ -n "$ADMOB_REWARDED_ID" ] && ARGS="$ARGS -PADMOB_REWARDED_ID=$ADMOB_REWARDED_ID"
+          [ -n "$ADMOB_INTERSTITIAL_ID" ] && ARGS="$ARGS -PADMOB_INTERSTITIAL_ID=$ADMOB_INTERSTITIAL_ID"
+          [ -z "$ADMOB_APP_ID" ] && echo "::warning::No ADMOB_APP_ID secret: building with Google TEST ads (fine for testing, not for production)"
+          gradle bundleRelease assembleRelease $ARGS --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mossy-meadows-play-store
+          path: |
+            android/gradle/app/build/outputs/bundle/release/*.aab
+            android/gradle/app/build/outputs/apk/release/*.apk
