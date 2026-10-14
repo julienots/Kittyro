@@ -7,3 +7,10 @@ android/release.properties
 *.log
 android/release.jks
 android/debug.keystore.jks
+android/gradle/.gradle
+android/gradle/build
+android/gradle/app/build
+android/gradle/app/src/main/assets
+android/*.keystore
+store/keys
+android/tools/bundletool.jar

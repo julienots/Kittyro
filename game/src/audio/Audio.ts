@@ -115,6 +115,13 @@ export class AudioEngine {
     });
   }
 
+  /** Silence everything while a full-screen ad plays. */
+  setMuted(m: boolean): void {
+    if (!this.ctx) return;
+    if (m) this.ctx.suspend();
+    else if (!document.hidden) this.ctx.resume();
+  }
+
   applyVolumes(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

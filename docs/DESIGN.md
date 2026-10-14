@@ -16,7 +16,7 @@ pousser pendant l'absence (plafonné).
 ## Contenu
 | Domaine | Contenu |
 |---|---|
-| Régions | Green Valley (ferme), Willowbrook (village), Whispering Woods, Crystal Mountains + mines, Sunny Coast, Frosty Peaks, Ember Valley, maison |
+| Régions | Green Valley (ferme), Willowbrook (village), **Clairefontaine (hameau à construire)**, Whispering Woods, Crystal Mountains + mines, Sunny Coast, Frosty Peaks, Ember Valley, maison |
 | Cultures | 17 (dont blé, maïs, carotte, tomate, fraise, pomme de terre, citrouille, salade, myrtille, pastèque, tournesol, tulipe, rose, chou d'hiver, ail, clochette de givre, fleur de lune), 5 stades visuels, repousse, serre |
 | Arbres fruitiers | pommier, cerisier, pêcher, oranger, citronnier |
 | Animaux de ferme | poule, canard, lapin, vache, mouton, chèvre, cochon, cheval (monture), chat, chien (suit le joueur) |
@@ -41,3 +41,81 @@ Joystick flottant (moitié gauche), toucher-pour-aller (avec interaction automat
 touchée), bouton d'action contextuel (le bon outil est choisi automatiquement pour arbres/rochers/
 herbes), bouton outil (appui long = roue d'outils), pinch pour zoomer, mode gaucher, choix du mode
 de contrôle dans le menu.
+
+## Clairefontaine — le hameau à construire (v1.1)
+Une clairière sauvage au sud de la ferme (sentier + panneau). Le joueur y fonde son propre village :
+- **16 bâtiments** : logements (cabane, chaumière, maison de pierre, grande demeure), lieux de travail
+  (scierie, carrière, champs communaux, cabane de pêche, fournil, atelier de tissage, forge, rucher,
+  taverne du Lapin Joyeux, halle du marché) et services (puits, kiosque à musique, statue du fondateur).
+- **Villageois générés** (nom, apparence, trait de caractère) : chaque lit libre attire un voyageur au
+  lever du jour (le premier arrive dès la première maison). Ils vivent une journée réglée : maison →
+  travail → taverne/place le soir → maison (ils rentrent vraiment chez eux), s'abritent quand il pleut.
+- **Bonheur** (logement, travail, puits, taverne, fournil, beauté des décorations, amitié, météo) →
+  productivité et nouveaux arrivants. **Production** quotidienne dans le coffre du registre 📒.
+- **Souhaits** (bulle 💭), cadeaux, métiers modifiables, 5 niveaux (Campement → Petite ville) qui
+  débloquent les bâtiments, **11 objectifs guidés** avec récompenses.
+- Nouveaux objets : poutre, pierre taillée, chaume, cire d'abeille, panier tressé ; plats : cidre,
+  tourte du hameau, maïs grillé, ragoût de Clairefontaine ; décorations : pavés, lanterne bleue,
+  bannière, massif de lavande, statue du renard.
+
+## Vie & réalisme (v1.1)
+Textures procédurales des bâtiments dans le shader (planches, briques, pierre, bardeaux, chaume,
+rondins, crépi, pavés) sans fichier image ni draw call supplémentaire ; ombres de nuages qui
+glissent sur le paysage ; volées d'oiseaux, mouettes sur la côte, moineaux qui s'envolent quand on
+approche ; passants dans Willowbrook (plus nombreux à mesure que le village est restauré).
+
+## Guidage (v1.1)
+Chaque option du menu est expliquée, volumes en %, guide du jeu (5 chapitres), astuces contextuelles
+affichées une seule fois (désactivables), carte de la vallée illustrée avec fiche de région.
+
+## Caméra & construction (v1.2)
+- **Caméra libre** : glisser le doigt hors du joystick (ou la souris) fait tourner la vue et change
+  l'inclinaison ; boutons ⟲ ⟳ au-dessus des actions.
+- **Vue à la première personne** (bouton 👁️, touche V) : regard au doigt, joystick dans la direction
+  du regard, point de visée au centre, et **mains visibles** qui balancent à la marche, traînent
+  derrière les mouvements de tête, respirent au repos et font les gestes des outils (hache, houe,
+  arrosoir, canne…), cueillette et repas.
+- **Placement libre** : le bâtiment suit le doigt en relatif (il ne se cache plus sous le doigt), la
+  caméra le suit et défile au bord de l'écran, flèches case par case, **rotation de tous les bâtiments**
+  (portes, animaux et villageois suivent), herbes/cailloux/souches dessous ramassés automatiquement,
+  sélection plus tolérante en mode « Déplacer ».
+
+## Première personne soignée (v1.3)
+- Mains rendues dans une passe séparée (scène, caméra et profondeur propres) : toujours nettes, jamais
+  dans les murs ; éclairage calé sur le soleil et le ciel du monde ; contour illustré.
+- Main articulée : paume arrondie, 4 doigts à 3 phalanges + pouce à 2 phalanges, ongles ; les doigts
+  se referment autour du manche, se détendent et bougent doucement à vide (vague décalée entre doigts).
+  Avant-bras nu (t-shirt) ou manche avec revers (pull, sweat, ciré…), aux couleurs de la tenue.
+- Outils détaillés propres à la vue : hache à lame biseautée et manche gainé de cuir, pioche courbe,
+  houe, arrosoir à anse arrière et pomme, canne avec moulinet et anneaux, faucille, filet. L'outil
+  équipé est toujours tenu, tourné pour montrer sa face ; changer d'outil baisse puis relève la main.
+- Gestes : anticipation → frappe → suivi pour hache/pioche/houe, arrosoir qu'on incline, lancer et
+  moulinet (la main gauche mouline), main tendue qui attrape, nourriture portée à la bouche, joie.
+- Déplacement : balancement de tête en 8 (deux creux par foulée + oscillation latérale), petit appui à
+  chaque pas, inclinaison dans les virages et pas chassés, champ de vision qui s'élargit à grande
+  vitesse, regard lissé ; les bras suivent le pas, traînent derrière les mouvements de tête et
+  respirent au repos ; léger vignettage.
+
+## v1.3.1
+- Multi-touch : un doigt sur le joystick + un autre qui glisse à droite = marcher ET tourner la vue en
+  même temps (le 2ᵉ doigt n'est plus pris pour un pincement de zoom ; pas de zoom en 1ʳᵉ personne).
+- Le bouton 👁️ (vue 1ʳᵉ personne) rejoint la rangée de menus en haut à droite ; les boutons ⟲ ⟳ qui
+  encombraient l'écran sont retirés (rotation au doigt, ou dans Menu → Caméra).
+
+## v1.3.2
+Outils en 1ʳᵉ personne orientés pour l'usage : tranchant de la hache, pointe de la pioche, lame de la houe
+et bec de l'arrosoir dirigés vers l'avant, vers le point de visée ; outils penchés vers l'avant, prêts à frapper ;
+faucille couchée, la lame balayant vers l'avant-gauche.
+
+## v1.4.0 — publicités & Play Store
+- **Pubs avec récompense (toujours facultatives)**, limitées par jour : +3 💎 (5/j), doubler les gains
+  d'hier (1/j, plafonné à 2000 🪙), production express du hameau (1/j), +30 points de pass (2/j),
+  objet gratuit en boutique (3/j, objets entre 100 et 2500 🪙 uniquement ; jamais d'animaux ni de sac).
+  Panneau « 📺 Récompenses » dans Paramètres.
+- **Interstitiels rares** uniquement aux pauses naturelles (voyage, coucher) : jamais dans les
+  6 premières minutes, ≥ 8 min d'écart, pas dans les 10 min suivant une pub récompensée, max 4/h.
+  Le jeu se met en pause et coupe le son pendant la pub.
+- Consentement RGPD (Google UMP) au 1er lancement, modifiable dans Paramètres → Publicités.
+- Android : targetSdk 36, retour prédictif (Android 13+), `isGame`. Build AdMob via Gradle/GitHub Actions
+  (`android/gradle`), build sans pub via `android/build.sh`.
+- Kit Play Store dans `store/` : textes FR/EN, visuels, politique de confidentialité, formulaires.

@@ -125,11 +125,14 @@ export class UI {
           btn('📜', 'Quêtes', () => this.openPanel('quests'), this.badgeQuests),
           btn('🔨', 'Construire', () => this.openPanel('build')),
           btn('🗺️', 'Carte', () => this.openPanel('map')),
+          h('button.icon-btn.view-btn', { title: 'Vue 1ʳᵉ personne / vue d\'ensemble (V)', onclick: (e: Event) => { e.stopPropagation(); g.toggleView(); } }, '👁️'),
           btn('📖', 'Collections', () => this.openPanel('collections')),
           btn('⚙️', 'Menu', () => this.openPanel('settings')),
         ),
       ),
       h('div.hud-actions', null, this.actBtn, this.toolBtn, this.seedBtn, this.rideBtn, this.waterMeter),
+      h('div.fp-vignette'),
+      h('div.crosshair'),
       this.joyHint,
     );
     // pointer events on interactive children only
@@ -184,7 +187,8 @@ export class UI {
     const tool = st.player.activeTool;
     const td = TOOL_BY_ID[tool];
     (this.toolBtn.querySelector('.ic') as HTMLElement).textContent = td.icon;
-    (this.toolBtn.querySelector('.tier') as HTMLElement).textContent = TOOL_TIERS[st.player.tools[tool]];
+    (this.toolBtn.querySelector('.tier') as HTMLElement).textContent = td.name;
+    this.toolBtn.title = `${td.name} (${TOOL_TIERS[st.player.tools[tool]]}) — appui long : changer d'outil`;
     const seeds = this.g.ctx.inventory.seeds();
     const sel = st.player.selectedSeed;
     const selQty = sel ? this.g.ctx.inventory.count(sel) : 0;
@@ -329,15 +333,18 @@ export class UI {
   }
 
   // ------------------------------------------------------------ dialogue
-  dialogue(npcId: string, text: string, options: { label: string; cls?: string; fn: () => void }[]): void {
+  dialogue(npc: string | { name: string; role: string; meter: string }, text: string, options: { label: string; cls?: string; fn: () => void }[]): void {
     this.closeDialogue();
-    const def = NPC_BY_ID[npcId];
-    const st = this.g.ctx.state.npcs[npcId];
-    const lvl = Math.floor((st?.friendship ?? 0) / FRIEND_POINTS_PER_LEVEL);
-    const leaves = '🍃'.repeat(Math.min(10, lvl)) + '·'.repeat(Math.max(0, 10 - lvl));
+    let who: { name: string; role: string; meter: string };
+    if (typeof npc === 'string') {
+      const def = NPC_BY_ID[npc];
+      const st = this.g.ctx.state.npcs[npc];
+      const lvl = Math.floor((st?.friendship ?? 0) / FRIEND_POINTS_PER_LEVEL);
+      who = { name: def?.name ?? npc, role: def?.role ?? '', meter: '🍃'.repeat(Math.min(10, lvl)) + '·'.repeat(Math.max(0, 10 - lvl)) };
+    } else who = npc;
     const p = h('p', null, '');
     this.dialogueEl = h('div.dialogue', { onpointerdown: (e: Event) => e.stopPropagation() },
-      h('div.who', null, h('b', null, def?.name ?? npcId), h('span.role', null, def?.role ?? ''), h('span.leaves', { title: 'Amitié' }, leaves)),
+      h('div.who', null, h('b', null, who.name), h('span.role', null, who.role), h('span.leaves', { title: 'Amitié' }, who.meter)),
       p,
       h('div.opts', null, ...options.map((o) => h(`button.btn.small${o.cls ? `.${o.cls}` : ''}`, { onclick: () => { this.g.audio.play('click'); o.fn(); } }, o.label))),
     );
@@ -382,6 +389,22 @@ export class UI {
 
   confirm(text: string, yes: () => void, yesLabel = 'Oui', noLabel = 'Non'): void {
     this.showPanel('confirm', '', h('div.center', null, h('p', { style: { fontSize: '18px' } }, text), h('div.row', { style: { justifyContent: 'center' } }, h('button.btn.ghost', { onclick: () => this.closePanel() }, noLabel), h('button.btn', { onclick: () => { this.closePanel(); yes(); } }, yesLabel))), { size: 'narrow' });
+  }
+
+  // ------------------------------------------------------------ one-time tips
+  private tipEl: HTMLElement | null = null;
+  /** Show a friendly tip once per save (can be turned off in the menu). */
+  tip(id: string, icon: string, title: string, text: string): void {
+    const st = this.g.ctx.state;
+    if (!this.g.settings.tips) return;
+    const seen: string[] = Array.isArray(st.flags.tips) ? st.flags.tips : (st.flags.tips = []);
+    if (seen.includes(id)) return;
+    seen.push(id);
+    this.tipEl?.remove();
+    const el = h('div.tip-card', { onpointerdown: (e: Event) => e.stopPropagation() }, h('span.em', null, icon), h('div', null, h('b', null, title), h('p', null, text)), h('button.btn.small', { onclick: () => el.remove() }, 'OK'));
+    this.tipEl = el;
+    this.root.appendChild(el);
+    setTimeout(() => el.remove(), 16000);
   }
 
   confetti(): void {

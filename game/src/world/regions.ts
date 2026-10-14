@@ -5,6 +5,7 @@ import { VILLAGE_BUILDINGS } from '../data/village';
 import { HOUSE_W, HOUSE_D } from './houseLayout';
 import type { MineFloor } from '../systems/Mining';
 import { MINE_SIZE } from '../systems/Mining';
+import { HAMLET_AREA } from '../data/hamlet';
 
 /**
  * Hand-designed region layouts with procedural detail. Deterministic for a given
@@ -119,6 +120,13 @@ export function buildFarm(seed: number, st: GameState): RegionLayout {
   b.scatter('weeds', 8, 32, 6, 44, 10);
   sprinkle(b, 'rocks_small', 10, 2, 2, 50, 44);
   sprinkle(b, 'log_small', 4, 2, 8, 8, 44);
+  // south trail to the hamlet — added last so the rest of the farm stays identical for existing saves
+  b.line([[23.5, 37.5], [23.5, 47]], 1.6, T.PATH, 0.1);
+  b.L.props = b.L.props.filter((p) => !(p.x >= 20.5 && p.x < 26.5 && p.z >= 38));
+  b.L.nodes = b.L.nodes.filter((n) => !(n.z >= 37 && b.get(Math.floor(n.x), Math.floor(n.z)) === T.PATH) && !(n.x >= 20.5 && n.x < 26.5 && n.z >= 42));
+  b.portal({ x0: 21, z0: 45, x1: 26, z1: 46, to: 'hamlet', anchor: 'farm_entry', label: 'Clairefontaine' });
+  b.anchor('hamlet_entry', 23.5, 42.5);
+  b.L.structures.push({ kind: 'signpost', x: 25, z: 40, w: 1, d: 1, params: { label: 'Hameau' } });
   return b.done({ hills: 0.22 });
 }
 
@@ -425,6 +433,61 @@ export function buildHouse(seed: number): RegionLayout {
   return b.done({ hills: 0 });
 }
 
+export function buildHamlet(seed: number, st: GameState): RegionLayout {
+  const b = new LayoutBuilder('hamlet', 54, 48, seed);
+  const A = HAMLET_AREA;
+  b.L.grass = 0.7;
+  b.L.flowers = [0xffffff, 0xffd03a, 0xb08ae8, 0xff8ab8, 0x8ad8ff];
+  // stream along the east edge and a pond in the south-west woods
+  b.line([[49, -1], [48, 12], [50, 26], [48.5, 38], [49.5, 49]], 2.6, T.WATER, 0.25);
+  b.circle(9, 43.5, 2.8, T.WATER);
+  // trail from the farm down to the founding stone
+  b.line([[27, -1], [27, 8], [26, 15]], 1.6, T.PATH, 0.15);
+  b.circle(26, 19, 2.6, T.PLAZA, 0.08);
+  b.rect(46, 20, 52, 23, T.BRIDGE);
+  b.structure({ kind: 'bridge', x: 46, z: 20, w: 6, d: 3, blocks: false, params: { span: 'x' } });
+  b.structure({ kind: 'hamlet_board', id: 'register', x: 25, z: 17, w: 1, d: 1 });
+  b.structure({ kind: 'campfire', x: 27, z: 20, w: 1, d: 1, blocks: true });
+  b.structure({ kind: 'tent', id: 'traveller_tent', x: 22, z: 19, w: 2, d: 2 });
+  b.structure({ kind: 'signpost', x: 29, z: 5, w: 1, d: 1, params: { label: 'Clairefontaine' } });
+  b.anchor('farm_entry', 27, 3.5);
+  b.anchor('spawn', 27, 3.5);
+  b.anchor('plaza', 26, 22.5);
+  b.anchor('register', 25.5, 18.6);
+  b.reserve(21, 15, 31, 25);
+  treeEdge(b, ['oak', 'birch', 'pine', 'oak'], [[24, 0, 30, 3]]);
+  b.portal({ x0: 24, z0: 0, x1: 30, z1: 1, to: 'farm', anchor: 'hamlet_entry', label: 'Green Valley' });
+  // the clearing is overgrown: trees, rocks and weeds to clear (they don't come back)
+  const clutter = (kind: string, n: number) => {
+    let placed = 0, tries = 0;
+    while (placed < n && tries < n * 40) {
+      tries++;
+      const x = b.r.int(A.minX, A.maxX - 1), z = b.r.int(A.minZ, A.maxZ - 1);
+      if (!b.free(x, z, [T.GRASS])) continue;
+      if (st.hamlet.placed.some((p) => x >= p.x - 1 && z >= p.z - 1 && x < p.x + 5 && z < p.z + 5)) continue;
+      b.node(kind, x + 0.5, z + 0.5, { once: true });
+      placed++;
+    }
+  };
+  clutter('weeds', 26);
+  clutter('rock', 12);
+  clutter('tree_oak', 8);
+  clutter('tree_birch', 5);
+  clutter('stump', 4);
+  // wild woods around the clearing
+  b.scatter(['tree_oak', 'tree_pine', 'tree_birch'], 14, 2, A.maxZ, 46, 46, [T.GRASS], 1);
+  b.scatter(['tree_oak', 'tree_pine'], 8, 2, 2, A.minX, 40, [T.GRASS], 1);
+  b.scatter('bush_berry', 5, 2, 2, 52, 46);
+  b.scatter('forage', 10, 2, 2, 52, 46);
+  b.scatter(['rock', 'ore_copper'], 4, 2, A.maxZ, 46, 46, [T.GRASS], 1);
+  b.scatter('clay_spot', 2, 2, 40, 20, 46);
+  sprinkle(b, 'rocks_small', 10, 2, 2, 52, 46);
+  sprinkle(b, 'log_small', 4, 2, 40, 50, 46);
+  b.L.props.push({ model: 'lantern_pole', x: 28.5, z: 16.5, rot: 0, blocks: true });
+  b.L.props.push({ model: 'log_pile', x: 23.5, z: 22.5, rot: 0.3 });
+  return b.done({ hills: 0.18 });
+}
+
 export function buildRegion(id: RegionId, st: GameState, mineFloor?: MineFloor): RegionLayout {
   const seed = st.seed;
   switch (id) {
@@ -437,5 +500,6 @@ export function buildRegion(id: RegionId, st: GameState, mineFloor?: MineFloor):
     case 'ember': return buildEmber(seed);
     case 'mine': return buildMine(seed, mineFloor!);
     case 'house': return buildHouse(seed);
+    case 'hamlet': return buildHamlet(seed, st);
   }
 }
