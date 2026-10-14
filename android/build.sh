@@ -80,29 +80,24 @@ sign_apk "$OUT/release-unsigned.apk" "$DIST/mossy-meadows-$VERSION_NAME-release.
 
 echo "==> Release AAB"
 link "$OUT/proto.zip" --proto-format
-python3 - "$OUT/proto.zip" "$OUT/classes.dex" "$OUT/base.aab" <<'PY'
+# base module layout: manifest/, dex/, res/, resources.pb, assets/
+python3 - "$OUT/proto.zip" "$OUT/classes.dex" "$OUT/base-module.zip" <<'PY'
 import sys, zipfile
 proto, dex, out = sys.argv[1:4]
-def varint(n):
-    b = bytearray()
-    while True:
-        x = n & 0x7f; n >>= 7
-        b.append(x | (0x80 if n else 0))
-        if not n: return bytes(b)
-def field(num, data):  # length-delimited
-    return varint((num << 3) | 2) + varint(len(data)) + data
-# BundleConfig { bundletool { version: "1.15.6" } }
-bundle_config = field(1, field(1, b'1.15.6'))
 with zipfile.ZipFile(proto) as src, zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-    z.writestr('BundleConfig.pb', bundle_config)
     for info in src.infolist():
         name = info.filename
         data = src.read(name)
-        if name == 'AndroidManifest.xml': z.writestr('base/manifest/AndroidManifest.xml', data)
-        elif name == 'resources.pb': z.writestr('base/resources.pb', data)
-        else: z.writestr('base/' + name, data)
-    z.write(dex, 'base/dex/classes.dex')
+        z.writestr('manifest/AndroidManifest.xml' if name == 'AndroidManifest.xml' else name, data)
+    z.write(dex, 'dex/classes.dex')
 PY
+# Google's bundletool (validates the bundle and writes BundleConfig.pb). Not in git:
+#   npm pack bundletoolheavy && tar xzf bundletoolheavy-*.tgz && cp package/bundletoolfile/*.jar android/tools/bundletool.jar
+BUNDLETOOL="$ROOT/android/tools/bundletool.jar"
+[ -f "$BUNDLETOOL" ] || { echo "missing $BUNDLETOOL (see comment in build.sh)"; exit 1; }
+rm -f "$OUT/base.aab"
+java -jar "$BUNDLETOOL" build-bundle --modules="$OUT/base-module.zip" --output="$OUT/base.aab"
+java -jar "$BUNDLETOOL" validate --bundle="$OUT/base.aab" >/dev/null
 jarsigner -sigalg SHA256withRSA -digestalg SHA-256 -keystore "$REL_KS" -storepass "$REL_PASS" \
   -signedjar "$DIST/mossy-meadows-$VERSION_NAME-release.aab" "$OUT/base.aab" mossy >/dev/null
 echo "==> Done"
