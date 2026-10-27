@@ -345,7 +345,7 @@ details.howto li { margin: 4px 0; }
 /* emote wheel */
 .emote-wheel { position: absolute; inset: 0; z-index: 30; background: rgba(40,30,20,.25); pointer-events: auto; }
 .ew-center { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px; border-radius: 50%; background: var(--paper); display: flex; align-items: center; justify-content: center; font-size: 32px; box-shadow: var(--shadow); }
-.ew-item { position: absolute; width: 70px; height: 70px; margin: -35px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 28px; line-height: 1; animation: pop .2s; }
+.ew-item { position: absolute; width: 62px; height: 62px; margin: -31px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 25px; line-height: 1; animation: pop .2s; }
 .ew-item small { font-size: 10px; font-weight: 600; color: var(--ink2); margin-top: 2px; }
 .ew-item:active { transform: scale(.92); }
 
@@ -387,3 +387,18 @@ details.howto li { margin: 4px 0; }
 @media (max-height: 500px) {
   .studio { grid-template-columns: minmax(150px, 32%) 1fr; height: calc(100vh - 182px); }
 }
+.fish-hint { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); background: var(--sun); color: var(--ink); font-weight: 600; font-size: 22px; padding: 10px 22px; border-radius: 22px; box-shadow: var(--shadow); z-index: 24; animation: hintBob .5s ease-in-out infinite alternate; pointer-events: none; white-space: nowrap; }
+@keyframes hintBob { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.08); } }
+
+/* item wheel */
+.item-wheel { position: absolute; inset: 0; z-index: 30; background: radial-gradient(circle at 50% 50%, rgba(40,30,20,.35) 0%, rgba(40,30,20,.15) 60%, rgba(40,30,20,.05) 100%); pointer-events: auto; animation: fade .15s; }
+@keyframes fade { from { opacity: 0; } }
+.iw-ring { position: absolute; left: 50%; top: 50%; width: min(196px, 48vh); height: min(196px, 48vh); transform: translate(-50%,-50%); border-radius: 50%; border: 6px solid rgba(255,248,236,.55); pointer-events: none; }
+.iw-center { position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 34px; text-align: center; pointer-events: none; }
+.iw-center small { font-size: 10.5px; font-weight: 600; color: var(--ink2); max-width: 84px; line-height: 1.1; }
+.iw-btn { position: absolute; width: 60px; height: 60px; margin: -30px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow); font-size: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; animation: pop .18s; }
+.iw-btn.tool small { font-size: 8.5px; font-weight: 600; color: var(--ink2); margin-top: 1px; }
+.iw-btn.on { background: var(--sun); }
+.iw-btn.item { width: 52px; height: 52px; margin: -26px; font-size: 24px; background: #f2fbea; }
+.iw-btn.item b { position: absolute; right: -4px; bottom: -4px; background: var(--mint2); color: #fff; font-size: 11px; min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+.iw-note { position: absolute; left: 50%; top: calc(50% + min(170px, 42vh)); transform: translateX(-50%); color: #fff; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.5); font-size: 13px; }

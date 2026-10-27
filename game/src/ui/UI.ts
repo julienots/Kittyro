@@ -271,13 +271,15 @@ export class UI {
     this.emoteEl?.remove();
     this.emoteEl = null;
     if (!open) return;
+    this.toggleToolWheel(false);
     const list = this.g.emotes();
+    const R = Math.min(140, window.innerHeight * 0.34);
     const n = list.length;
     this.emoteEl = h('div.emote-wheel', { onpointerdown: (e: Event) => { e.stopPropagation(); if (e.target === this.emoteEl) this.toggleEmoteWheel(false); } },
       h('div.ew-center', null, '😊'),
       ...list.map((em, i) => {
         const a = (i / n) * Math.PI * 2 - Math.PI / 2;
-        return h('button.ew-item', { style: { left: `calc(50% + ${Math.cos(a) * 118}px)`, top: `calc(50% + ${Math.sin(a) * 118}px)` }, onclick: (e: Event) => { e.stopPropagation(); this.toggleEmoteWheel(false); this.g.emote(em.id); } }, h('span', null, em.icon), h('small', null, em.name));
+        return h('button.ew-item', { style: { left: `calc(50% + ${Math.cos(a) * R}px)`, top: `calc(50% + ${Math.sin(a) * R}px)` }, onclick: (e: Event) => { e.stopPropagation(); this.toggleEmoteWheel(false); this.g.emote(em.id); } }, h('span', null, em.icon), h('small', null, em.name));
       }),
     );
     this.root.appendChild(this.emoteEl);
@@ -289,19 +291,32 @@ export class UI {
     this.actBtn.classList.toggle('idle', !a.enabled);
   }
 
+  /** Item wheel: tools on the inner ring, seeds & food on the outer ring. */
   toggleToolWheel(open: boolean): void {
     this.wheel?.remove();
     this.wheel = null;
     if (!open) return;
-    const st = this.g.ctx.state;
+    this.emoteEl?.remove();
+    this.emoteEl = null;
+    const g = this.g;
+    const st = g.ctx.state;
     const tools: ToolId[] = ['hoe', 'can', 'sickle', 'axe', 'pickaxe', 'rod'];
-    this.wheel = h('div.card.tool-wheel', null, ...tools.map((t) => h(`button${st.player.activeTool === t ? '.on' : ''}`, {
-      onclick: (e: Event) => {
-        e.stopPropagation();
-        this.g.selectTool(t);
-        this.toggleToolWheel(false);
-      },
-    }, TOOL_BY_ID[t].icon, h('small', null, TOOL_BY_ID[t].name))));
+    const seeds = g.ctx.inventory.seeds();
+    const food = st.inventory.filter((s): s is { id: string; qty: number } => !!s && item(s.id).cat === 'dish').slice(0, 4);
+    const outer: { icon: string; label: string; qty?: number; on: boolean; fn: () => void }[] = [
+      ...seeds.slice(0, 8 - Math.min(food.length, 3)).map((sd) => ({ icon: item(sd.id.replace('seed_', '')).icon ?? '🌱', label: item(sd.id).name, qty: sd.qty, on: st.player.selectedSeed === sd.id, fn: () => { g.selectSeed(sd.id); this.toast(`Graine : ${item(sd.id).name}`, '🌱'); } })),
+      ...food.slice(0, 3).map((f) => ({ icon: item(f.id).icon, label: `Manger ${item(f.id).name}`, qty: f.qty, on: false, fn: () => g.eat(f.id) })),
+    ];
+    const center = h('div.iw-center', null, h('span', null, TOOL_BY_ID[st.player.activeTool].icon), h('small', null, TOOL_BY_ID[st.player.activeTool].name));
+    const R1 = Math.min(98, window.innerHeight * 0.24), R2 = Math.min(168, window.innerHeight * 0.42);
+    const place = (i: number, n: number, r: number, off = 0) => { const a = (i / n) * Math.PI * 2 - Math.PI / 2 + off; return { left: `calc(50% + ${Math.cos(a) * r}px)`, top: `calc(50% + ${Math.sin(a) * r}px)` }; };
+    const hover = (label: string, icon: string) => { center.replaceChildren(h('span', null, icon), h('small', null, label)); };
+    this.wheel = h('div.item-wheel', { onpointerdown: (e: Event) => { e.stopPropagation(); if (e.target === this.wheel) this.toggleToolWheel(false); } },
+      h('div.iw-ring'), center,
+      ...tools.map((t, i) => h(`button.iw-btn.tool${st.player.activeTool === t ? '.on' : ''}`, { style: place(i, tools.length, R1), onpointerenter: () => hover(TOOL_BY_ID[t].name, TOOL_BY_ID[t].icon), onclick: (e: Event) => { e.stopPropagation(); g.selectTool(t); this.toggleToolWheel(false); } }, TOOL_BY_ID[t].icon, h('small', null, TOOL_BY_ID[t].name))),
+      ...outer.map((o, i) => h(`button.iw-btn.item${o.on ? '.on' : ''}`, { style: place(i, Math.max(outer.length, 8), R2, Math.PI / 8), onpointerenter: () => hover(o.label, o.icon), onclick: (e: Event) => { e.stopPropagation(); o.fn(); this.toggleToolWheel(false); } }, o.icon, o.qty ? h('b', null, String(o.qty)) : null)),
+      outer.length ? null : h('div.iw-note', null, 'Vos graines et plats apparaîtront ici'),
+    );
     this.root.appendChild(this.wheel);
   }
 

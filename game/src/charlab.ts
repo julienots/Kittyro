@@ -1,6 +1,8 @@
 // Visual check harness for characters: node e2e/look ... ?charlab[&row=hair|tops|faces]
 import * as THREE from 'three';
 import { buildCharacter } from './models/Character';
+import { buildAnimal } from './models/Animals';
+import { ANIMALS } from './data/animals';
 import { DEFAULT_LOOK } from './state/newGame';
 import { NPCS } from './data/npcs';
 import type { Appearance } from './state/types';
@@ -19,6 +21,20 @@ export function charLab(): void {
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(2, 4, 3);
   scene.add(sun);
+  if (mode === 'animals') {
+    ANIMALS.forEach((a, i) => {
+      const r = buildAnimal(a.id, a.colors[0], a.scale, true);
+      r.root.position.set((i % 9 - 4) * 1.15, Math.floor(i / 9) * -1.6, 0);
+      r.root.rotation.y = 0.6;
+      scene.add(r.root);
+    });
+    const cam = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
+    cam.position.set(0, 1.2, 12);
+    cam.lookAt(0, -0.6, 0);
+    const loop = () => { r.render(scene, cam); (window as any).__frames = ((window as any).__frames ?? 0) + 1; requestAnimationFrame(loop); };
+    loop();
+    return;
+  }
   const looks: Appearance[] = [];
   const base: Appearance = { ...DEFAULT_LOOK };
   if (mode === 'hair') for (let i = 0; i < 20; i++) looks.push({ ...base, hairStyle: i, hairColor: i % 14, skin: i % 8, top: ['tee', 'overalls', 'hoodie', 'shirt', 'dress', 'tank', 'jacket', 'sweater', 'vest', 'kimono'][i % 10], topColor: [0x5ab8e8, 0xe85a5a, 0x8ad07a, 0xffd03a, 0xb08ae8][i % 5], eyeStyle: i % 5, brow: i % 4, mouth: i % 4, freckles: i % 3 === 0, lashes: i % 2 === 0, facialHair: i % 7 === 3 ? 1 + (i % 3) : 0, bottom: ['pants', 'shorts', 'skirt', 'cargo'][i % 4] });

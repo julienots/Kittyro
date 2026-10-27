@@ -172,6 +172,7 @@ export class Game implements GameApi {
     this.renderer.autoQuality = this.settings.autoQuality;
     this.applyInputSettings();
     this.ui.applyLayout();
+    if (this.fishing) this.fishing.easy = this.settings.easyFishing;
   }
   private applyInputSettings(): void {
     this.input.mode = this.settings.controls;
@@ -217,6 +218,8 @@ export class Game implements GameApi {
     this.renderer.scene.add(this.world.root, this.entities.group, this.player.root);
     this.fishing?.end();
     this.fishing = new FishingGame(this.ctx, this.player, this.particles, this.ui, audio, this.renderer.scene);
+    this.fishing.tipFn = (out) => this.rig.view === 'fp' && this.fpHands.rodTip(this.renderer.camera, out);
+    this.fishing.easy = this.settings.easyFishing;
     this.placement = new Placement(this.ctx, this.world, this.ui, this.rig, this.renderer.scene);
     if (this.guide) this.renderer.scene.remove(this.guide.group);
     this.guide = new Guide(this.ctx, () => this.world, () => this.entities, () => this.player);

@@ -239,7 +239,7 @@ export class AnimalAgent extends Mover {
       this.anim += dt * (sp === 'rabbit' ? 10 : 12) * (this.speed / 1.5);
       const hop = sp === 'rabbit' || sp === 'sheep' || sp === 'dog';
       rig.body.position.y = hop ? Math.abs(Math.sin(this.anim)) * 0.14 : Math.abs(Math.sin(this.anim)) * 0.05;
-      rig.body.rotation.z = Math.sin(this.anim) * (sp === 'duck' || sp === 'chicken' || sp === 'pig' ? 0.14 : 0.05);
+      rig.body.rotation.z = Math.sin(this.anim) * (sp === 'duck' || sp === 'chicken' || sp === 'pig' || sp === 'goose' || sp === 'turkey' || sp === 'penguin' ? 0.14 : 0.05);
       rig.head.rotation.x = Math.sin(this.anim * 2) * 0.08;
       rig.tail.rotation.y = Math.sin(this.anim * 2) * 0.4;
       rig.body.scale.y = damp(rig.body.scale.y, 1, 8, dt);
@@ -842,7 +842,7 @@ export class EntityManager {
       this.wildAnimalT = this.r.range(40, 80);
       const candidates = ANIMALS.filter((a) => a.wild && a.region === region && !this.ctx.animals.owns(a.id));
       const night = isNight(st.time.minute);
-      const pick = candidates.filter((a) => (a.id === 'hedgehog' || a.id === 'raccoon' || a.id === 'lumipanda' ? night || a.id === 'lumipanda' : true));
+      const pick = candidates.filter((a) => (a.id === 'hedgehog' || a.id === 'raccoon' || a.id === 'owl' || a.id === 'lumipanda' ? night || a.id === 'lumipanda' : true));
       if (pick.length && !this.wild.some((w) => w.kind === 'wildanimal')) {
         const def = this.r.pick(pick);
         if (def.id === 'lumipanda' && !(night && rng.chance(0.5))) return;

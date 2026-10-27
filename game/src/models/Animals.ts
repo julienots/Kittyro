@@ -248,6 +248,120 @@ function speciesParts(species: string, c: number): Parts {
       eyes(head, 0.05, 0.03, 0.08, 0.025);
       return { body, head, tail, headPos: [0, 0.18, 0.24], tailPos: [0, 0.2, -0.2], height: 0.4 };
     }
+    case 'goose': {
+      body.sphere(0.3, c, { pos: [0, 0.36, -0.02], scale: [0.85, 0.85, 1.25] }, 14);
+      for (const sx of [-1, 1]) body.sphere(0.16, darker(c, 0.93), { pos: [sx * 0.22, 0.4, -0.06], scale: [0.45, 0.8, 1.4] }, 8);
+      for (const sx of [-1, 1]) { body.cyl(0.025, 0.025, 0.14, 0xff9a2a, { pos: [sx * 0.09, 0.07, 0.02] }); body.box(0.08, 0.015, 0.1, 0xff9a2a, { pos: [sx * 0.09, 0.008, 0.06] }); }
+      body.limb([0, 0.5, 0.2], [0, 0.78, 0.3], 0.075, 0.06, c, 10);
+      head.sphere(0.11, c, { scale: [0.9, 1, 1.2] }, 12);
+      head.cone(0.045, 0.13, 0xff9a2a, { pos: [0, -0.02, 0.15], rot: [Math.PI / 2, 0, 0] }, 8);
+      eyes(head, 0.06, 0.03, 0.07, 0.025);
+      tail.cone(0.09, 0.14, darker(c, 0.92), { rot: [-1.2, 0, 0] });
+      return { body, head, tail, headPos: [0, 0.82, 0.32], tailPos: [0, 0.42, -0.38], height: 0.95 };
+    }
+    case 'turkey': {
+      body.sphere(0.3, c, { pos: [0, 0.38, 0], scale: [0.95, 0.9, 1.1] }, 14);
+      for (let i = 0; i < 9; i++) {
+        const a = -1.2 + (i / 8) * 2.4;
+        tail.sphere(0.12, [0xa8703a, 0x6a4a3a, 0xe8c070][i % 3], { pos: [Math.sin(a) * 0.32, Math.cos(a) * 0.32, -0.02], scale: [0.55, 1.2, 0.25], rot: [0, 0, -a] }, 8);
+      }
+      for (const sx of [-1, 1]) body.cyl(0.025, 0.025, 0.16, 0xd8a050, { pos: [sx * 0.1, 0.08, 0] });
+      head.sphere(0.1, 0xd8c8c0, {}, 10);
+      head.cone(0.035, 0.08, 0xffc040, { pos: [0, -0.01, 0.12], rot: [Math.PI / 2, 0, 0] });
+      head.limb([0.02, -0.03, 0.1], [0.025, -0.15, 0.1], 0.025, 0.02, 0xe83a3a, 6);
+      eyes(head, 0.05, 0.03, 0.08, 0.022);
+      return { body, head, tail, headPos: [0, 0.72, 0.24], tailPos: [0, 0.48, -0.3], height: 0.95 };
+    }
+    case 'alpaca': {
+      body.sphere(0.3, c, { pos: [0, 0.68, 0], scale: [0.95, 0.9, 1.35] }, 14);
+      for (let i = 0; i < 10; i++) body.sphere(0.12, i % 2 ? c : darker(c, 0.95), { pos: [Math.sin(i * 1.3) * 0.2, 0.78 + (i % 3) * 0.05, -0.25 + i * 0.05] }, 8);
+      legs4(body, 0.14, 0.24, 0.5, 0.055, darker(c, 0.92));
+      body.limb([0, 0.82, 0.3], [0, 1.18, 0.42], 0.11, 0.09, c, 10);
+      head.sphere(0.14, c, { scale: [0.9, 1, 1.15] }, 12);
+      head.sphere(0.11, c, { pos: [0, 0.1, -0.02] }, 8); // fluffy top
+      head.sphere(0.07, darker(c, 0.85), { pos: [0, -0.05, 0.13], scale: [1, 0.8, 0.9] }, 8);
+      for (const sx of [-1, 1]) head.cone(0.035, 0.12, c, { pos: [sx * 0.08, 0.17, -0.03], rot: [0, 0, -sx * 0.25] }, 6);
+      eyes(head, 0.065, 0.03, 0.12, 0.032);
+      blush(head, 0.1, -0.03, 0.1, 0.028);
+      tail.sphere(0.08, c, { pos: [0, 0, -0.03] });
+      return { body, head, tail, headPos: [0, 1.25, 0.46], tailPos: [0, 0.75, -0.42], height: 1.5 };
+    }
+    case 'donkey': {
+      body.rbox(0.42, 0.42, 0.85, c, { pos: [0, 0.72, 0] }, 0.4);
+      body.sphere(0.14, 0xe8e0d8, { pos: [0, 0.58, 0.1], scale: [1.2, 0.6, 2] });
+      legs4(body, 0.15, 0.3, 0.5, 0.06, darker(c, 0.88));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) body.cyl(0.07, 0.07, 0.06, 0x3a2e2a, { pos: [sx * 0.15, 0.03, sz * 0.3] }, 6);
+      head.capsule(0.13, 0.2, c, { rot: [0.9, 0, 0] });
+      head.box(0.05, 0.3, 0.16, 0x3a2e2a, { pos: [0, 0.14, -0.08], rot: [0.5, 0, 0] });
+      head.rbox(0.22, 0.2, 0.26, 0xe8e0d8, { pos: [0, 0.06, 0.2] }, 0.4);
+      for (const sx of [-1, 1]) head.limb([sx * 0.06, 0.15, 0.0], [sx * 0.12, 0.42, -0.04], 0.04, 0.025, c, 6);
+      eyes(head, 0.1, 0.13, 0.18, 0.032);
+      tail.limb([0, 0, 0], [0, -0.32, -0.08], 0.025, 0.02, darker(c, 0.85), 6);
+      tail.sphere(0.05, 0x3a2e2a, { pos: [0, -0.34, -0.09] });
+      return { body, head, tail, headPos: [0, 1.05, 0.48], tailPos: [0, 0.9, -0.45], height: 1.5 };
+    }
+    case 'squirrel': {
+      body.sphere(0.16, c, { pos: [0, 0.2, 0], scale: [0.9, 1.1, 1] }, 10);
+      body.sphere(0.09, 0xf4e0c0, { pos: [0, 0.2, 0.09], scale: [0.9, 1.2, 0.8] });
+      legs4(body, 0.07, 0.07, 0.08, 0.03, c);
+      head.sphere(0.13, c, {}, 10);
+      head.sphere(0.06, 0xf4e0c0, { pos: [0, -0.04, 0.09] });
+      for (const sx of [-1, 1]) head.cone(0.035, 0.09, c, { pos: [sx * 0.07, 0.12, -0.02], rot: [0, 0, -sx * 0.2] }, 6);
+      head.sphere(0.018, 0x2a1e1a, { pos: [0, -0.02, 0.14] });
+      eyes(head, 0.055, 0.03, 0.1, 0.03);
+      tail.limb([0, 0, 0], [0, 0.2, -0.12], 0.07, 0.1, c, 8);
+      tail.limb([0, 0.2, -0.12], [0, 0.34, 0.0], 0.1, 0.06, darker(c, 0.92), 8);
+      return { body, head, tail, headPos: [0, 0.38, 0.06], tailPos: [0, 0.18, -0.15], height: 0.6 };
+    }
+    case 'owl': {
+      body.sphere(0.25, c, { pos: [0, 0.3, 0], scale: [0.9, 1.15, 0.85] }, 12);
+      body.sphere(0.17, 0xf0e0c0, { pos: [0, 0.27, 0.1], scale: [0.9, 1.1, 0.6] }, 10);
+      for (const sx of [-1, 1]) body.sphere(0.14, darker(c, 0.85), { pos: [sx * 0.2, 0.32, -0.02], scale: [0.4, 1.1, 0.9] }, 8);
+      for (const sx of [-1, 1]) body.box(0.06, 0.03, 0.08, 0xffb030, { pos: [sx * 0.07, 0.04, 0.05] });
+      head.sphere(0.2, c, { scale: [1.05, 0.9, 0.9] }, 12);
+      for (const sx of [-1, 1]) {
+        head.sphere(0.085, 0xf8f0e0, { pos: [sx * 0.08, 0.0, 0.13], scale: [1, 1, 0.5] }, 10);
+        head.sphere(0.05, 0xffb030, { pos: [sx * 0.08, 0.0, 0.16], scale: [1, 1, 0.5] }, 8);
+        head.sphere(0.028, 0x1a1210, { pos: [sx * 0.08, 0.0, 0.18] }, 6);
+        head.cone(0.04, 0.1, darker(c, 0.8), { pos: [sx * 0.12, 0.17, 0], rot: [0, 0, -sx * 0.35] }, 5);
+      }
+      head.cone(0.025, 0.06, 0xffb030, { pos: [0, -0.06, 0.17], rot: [Math.PI / 2 + 0.6, 0, 0] }, 5);
+      tail.cone(0.08, 0.12, darker(c, 0.85), { rot: [-2.4, 0, 0] });
+      return { body, head, tail, headPos: [0, 0.62, 0.0], tailPos: [0, 0.1, -0.18], height: 0.85 };
+    }
+    case 'frog': {
+      body.sphere(0.2, c, { pos: [0, 0.14, 0], scale: [1.1, 0.7, 1.05] }, 12);
+      body.sphere(0.13, 0xf0f0c8, { pos: [0, 0.1, 0.08], scale: [1, 0.6, 1] }, 8);
+      for (const sx of [-1, 1]) { body.sphere(0.08, darker(c, 0.9), { pos: [sx * 0.17, 0.06, -0.08], scale: [0.8, 0.6, 1.4] }, 8); body.sphere(0.04, darker(c, 0.9), { pos: [sx * 0.1, 0.03, 0.14] }, 6); }
+      head.sphere(0.15, c, { scale: [1.2, 0.75, 1] }, 12);
+      for (const sx of [-1, 1]) { head.sphere(0.06, c, { pos: [sx * 0.09, 0.09, 0.02] }, 8); head.sphere(0.045, 0xffffff, { pos: [sx * 0.09, 0.11, 0.05] }, 8); head.sphere(0.025, 0x1a1a1a, { pos: [sx * 0.09, 0.11, 0.09] }, 6); }
+      head.torus(0.07, 0.008, darker(c, 0.6), { pos: [0, -0.02, 0.12], rot: [0.3, 0, Math.PI] }, Math.PI);
+      blush(head, 0.12, -0.01, 0.1, 0.025);
+      return { body, head, tail, headPos: [0, 0.22, 0.12], tailPos: [0, 0.1, -0.15], height: 0.45 };
+    }
+    case 'penguin': {
+      body.sphere(0.25, c, { pos: [0, 0.34, 0], scale: [0.95, 1.3, 0.9] }, 14);
+      body.sphere(0.19, 0xffffff, { pos: [0, 0.3, 0.08], scale: [0.9, 1.3, 0.8] }, 12);
+      for (const sx of [-1, 1]) { body.sphere(0.12, c, { pos: [sx * 0.24, 0.36, 0], scale: [0.25, 1.1, 0.7], rot: [0, 0, sx * 0.25] }, 8); body.box(0.08, 0.025, 0.12, 0xffa02a, { pos: [sx * 0.08, 0.012, 0.06] }); }
+      head.sphere(0.17, c, {}, 12);
+      head.sphere(0.12, 0xffffff, { pos: [0, -0.02, 0.08], scale: [1.1, 0.9, 0.7] }, 10);
+      head.cone(0.035, 0.08, 0xffa02a, { pos: [0, -0.03, 0.17], rot: [Math.PI / 2, 0, 0] }, 6);
+      eyes(head, 0.06, 0.03, 0.14, 0.028);
+      blush(head, 0.1, -0.05, 0.12, 0.028);
+      tail.cone(0.07, 0.08, c, { rot: [-2.2, 0, 0] });
+      return { body, head, tail, headPos: [0, 0.74, 0.02], tailPos: [0, 0.08, -0.2], height: 0.95 };
+    }
+    case 'crab': {
+      body.sphere(0.18, c, { pos: [0, 0.14, 0], scale: [1.35, 0.6, 1] }, 12);
+      for (const sx of [-1, 1]) {
+        for (let i = 0; i < 3; i++) body.limb([sx * 0.16, 0.1, -0.06 + i * 0.07], [sx * 0.3, 0.0, -0.1 + i * 0.09], 0.02, 0.012, darker(c, 0.85), 5);
+        body.limb([sx * 0.12, 0.16, 0.12], [sx * 0.22, 0.24, 0.24], 0.025, 0.03, c, 6);
+        body.sphere(0.07, c, { pos: [sx * 0.24, 0.27, 0.27], scale: [1.1, 0.8, 0.9] }, 8);
+        body.cone(0.03, 0.06, darker(c, 0.8), { pos: [sx * 0.24, 0.33, 0.3], rot: [0.3, 0, 0] }, 5);
+      }
+      for (const sx of [-1, 1]) { head.limb([sx * 0.05, 0, 0], [sx * 0.06, 0.08, 0], 0.012, 0.01, c, 5); head.sphere(0.03, 0xffffff, { pos: [sx * 0.06, 0.1, 0.0] }, 6); head.sphere(0.016, 0x1a1a1a, { pos: [sx * 0.06, 0.105, 0.025] }, 5); }
+      return { body, head, tail, headPos: [0, 0.2, 0.12], tailPos: [0, 0.1, -0.15], height: 0.45 };
+    }
     case 'lumipanda': {
       body.sphere(0.4, 0xf7f4ff, { pos: [0, 0.48, 0], scale: [1, 0.95, 1.1] }, 14);
       body.sphere(0.25, 0x3a3a4a, { pos: [0, 0.6, 0], scale: [1.65, 0.5, 1.2] });

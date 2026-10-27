@@ -868,7 +868,7 @@ function settings(ui: UI): void {
   };
   const help = (t: string) => h('div.opt-help', null, t);
   const chips = <T extends string>(list: [T, string][], cur: T, on: (v: T) => void) => h('div.row', { style: { flexWrap: 'wrap' } }, ...list.map(([v, l]) => h(`button.chip${v === cur ? '.on' : ''}`, { onclick: () => on(v) }, l)));
-  const toggle = (k: 'leftHanded' | 'haptics' | 'autoQuality' | 'showFps' | 'tips' | 'tracker' | 'guideArrow' | 'intro', label: string, text: string) => h('div', null,
+  const toggle = (k: 'leftHanded' | 'haptics' | 'autoQuality' | 'showFps' | 'tips' | 'tracker' | 'guideArrow' | 'intro' | 'easyFishing', label: string, text: string) => h('div', null,
     h('div.row', null, h(`button.chip${s[k] ? '.on' : ''}`, { onclick: () => set(k, !s[k]) }, `${s[k] ? '✓' : '○'} ${label}`), h('span.muted', null, s[k] ? 'Activé' : 'Désactivé')),
     help(text));
   const slider = (k: 'music' | 'sfx' | 'ambience', label: string, text: string) => {
@@ -900,6 +900,7 @@ function settings(ui: UI): void {
     h('h3', null, '🧭 Guidage'),
     toggle('tracker', '📌 Suivi de quête', 'Le cadre en haut à gauche : la quête suivie, ses étapes et une phrase « quoi faire maintenant ». Touchez une autre quête de la liste pour la suivre à la place.'),
     toggle('guideArrow', '➡️ Flèche jaune', 'Une flèche dorée flotte au-dessus de l\'objectif (personnage, arbre, bâtiment…) et une flèche au bord de l\'écran indique la direction et la distance.'),
+    toggle('easyFishing', '🎣 Pêche facile', 'Les poissons communs se pêchent juste en touchant le bouton au bon moment (quand ❗ apparaît). Les poissons rares gardent le mini-jeu, avec une zone verte plus grande.'),
     toggle('intro', '🎬 Cinématique d\'introduction', 'Joue la petite scène d\'histoire au début d\'une nouvelle partie.'),
     h('div.row', { style: { flexWrap: 'wrap' } }, h('button.btn.small.ghost', { onclick: () => { ui.closePanel(); g.replayIntro(); } }, '🎬 Revoir l\'introduction')),
     h('details.howto', null, h('summary', null, '🔎 Que veulent dire les boutons ?'), h('ul', null,

@@ -226,6 +226,20 @@ export class FPHands {
     if (this.toolKey === '' || this.swapT >= 0.5) swap();
   }
 
+  /** Where the rod tip is drawn on screen, expressed as a world point in front of the main camera. */
+  rodTip(main: THREE.Camera, out: THREE.Vector3): boolean {
+    if (!this.visible || !this.tool || !this.toolKey.startsWith('rod')) return false;
+    const local = new THREE.Vector3(0, 0.1 + Math.cos(0.55) * 0.95, -Math.sin(0.55) * 0.95);
+    this.group.updateMatrixWorld(true);
+    const p = local.applyMatrix4(this.tool.matrixWorld);
+    this.camera.updateMatrixWorld();
+    const ndc = p.clone().project(this.camera);
+    const camPos = new THREE.Vector3().setFromMatrixPosition(main.matrixWorld);
+    const dir = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(main).sub(camPos).normalize();
+    out.copy(camPos).addScaledVector(dir, 1.1);
+    return true;
+  }
+
   setAspect(a: number): void {
     if (Math.abs(this.camera.aspect - a) > 1e-3) {
       this.camera.aspect = a;

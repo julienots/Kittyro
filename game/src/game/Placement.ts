@@ -41,13 +41,75 @@ export class Placement {
   private finger = { nx: 0, ny: 0 };
   private pan = new THREE.Vector2();
   onDone: ((placed: boolean) => void) | null = null;
+  // build grid: follows the terrain around the ghost, free cells light, blocked cells shaded
+  private static readonly GN = 32;
+  private grid: THREE.Mesh;
+  private gridTex: THREE.DataTexture;
+  private gridKey = '';
 
   constructor(private ctx: Ctx, private world: World, private ui: UI, private rig: CameraRig, scene: THREE.Scene) {
     this.tiles = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.okMat);
     this.tiles.renderOrder = 5;
     this.ghost.visible = false;
     this.tiles.visible = false;
-    scene.add(this.ghost, this.tiles);
+    const N = Placement.GN;
+    this.gridTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N, THREE.RGBAFormat);
+    this.gridTex.magFilter = this.gridTex.minFilter = THREE.NearestFilter;
+    const geo = new THREE.PlaneGeometry(N, N, N, N).rotateX(-Math.PI / 2);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uOrigin: { value: new THREE.Vector2() }, uFocus: { value: new THREE.Vector2() }, uCells: { value: this.gridTex }, uN: { value: N } },
+      vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: `
+        uniform vec2 uOrigin; uniform vec2 uFocus; uniform sampler2D uCells; uniform float uN; varying vec3 vW;
+        void main(){
+          vec2 c = vW.xz - uOrigin;
+          vec4 cell = texture2D(uCells, (floor(c) + 0.5) / uN);
+          vec2 f = abs(fract(vW.xz) - 0.5);
+          float line = smoothstep(0.43, 0.49, max(f.x, f.y));
+          float d = length(vW.xz - uFocus);
+          float fade = 1.0 - smoothstep(6.0, 13.0, d);
+          vec3 col = mix(vec3(1.0, 0.3, 0.25), vec3(1.0), cell.r);
+          float a = (line * 0.42 + (1.0 - cell.r) * 0.3) * fade;
+          if (a < 0.01) discard;
+          gl_FragColor = vec4(col, a);
+        }`,
+    });
+    this.grid = new THREE.Mesh(geo, mat);
+    this.grid.renderOrder = 4;
+    this.grid.visible = false;
+    this.grid.frustumCulled = false;
+    scene.add(this.ghost, this.tiles, this.grid);
+  }
+
+  /** Re-center the grid on the ghost: drape it on the terrain and mark buildable cells. */
+  private updateGrid(cx: number, cz: number): void {
+    const N = Placement.GN;
+    const ox = Math.round(cx) - N / 2, oz = Math.round(cz) - N / 2;
+    const key = `${ox},${oz},${this.world.region},${this.kind}`;
+    const mat = this.grid.material as THREE.ShaderMaterial;
+    mat.uniforms.uFocus.value.set(cx, cz);
+    if (key === this.gridKey) return;
+    this.gridKey = key;
+    mat.uniforms.uOrigin.value.set(ox, oz);
+    this.grid.position.set(ox + N / 2, 0, oz + N / 2);
+    const pos = this.grid.geometry.attributes.position as THREE.BufferAttribute;
+    const indoor = this.world.layout.indoor;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) + ox + N / 2, z = pos.getZ(i) + oz + N / 2;
+      pos.setY(i, (indoor ? 0.03 : this.world.heightAt(x, z) + 0.05));
+    }
+    pos.needsUpdate = true;
+    this.grid.geometry.computeBoundingSphere();
+    const data = this.gridTex.image.data as Uint8Array;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = ox + i, z = oz + j;
+      const ok = indoor ? !this.world.isBlocked(x + 0.5, z + 0.5, 0.1) : this.ctx.terrain.isBuildable(x, z);
+      const k = (j * N + i) * 4;
+      data[k] = ok ? 255 : 0;
+      data[k + 3] = 255;
+    }
+    this.gridTex.needsUpdate = true;
   }
 
   get area(): 'farm' | 'house' | 'hamlet' {
@@ -74,6 +136,8 @@ export class Placement {
     this.buildGhost();
     this.active = true;
     this.ghost.visible = this.tiles.visible = true;
+    this.grid.visible = true;
+    this.gridKey = '';
     const name = this.isSapling() ? item(kind).name : BUILDING_BY_ID[kind]?.name ?? HAMLET_BY_ID[kind]?.name ?? DECOR_BY_ID[kind]?.name ?? kind;
     this.hint = h('div.card.placement-hint', null, name);
     const canRotate = kind !== 'house' && !this.isSapling() && !DECOR_BY_ID[kind]?.wall;
@@ -143,6 +207,7 @@ export class Placement {
     this.ghost.position.set(cx, y + (def?.path ? 0.02 : 0), cz);
     this.ghost.rotation.y = def?.wall ? 0 : -this.rot * (Math.PI / 2);
     this.tiles.position.set(cx, y + 0.06, cz);
+    this.updateGrid(cx, cz);
     this.tiles.scale.set(fp.w, 1, fp.d);
     this.center.set(cx, y, cz);
     const v = this.valid();
@@ -264,6 +329,7 @@ export class Placement {
     this.active = false;
     this.dragging = false;
     this.ghost.visible = this.tiles.visible = false;
+    this.grid.visible = false;
     this.bar?.remove();
     this.hint?.remove();
     this.bar = this.hint = null;

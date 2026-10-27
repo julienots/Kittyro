@@ -56,6 +56,9 @@ export const MATERIALS: MaterialDef[] = [
   // animal products
   { id: 'egg', name: 'Œuf', icon: '🥚', sell: 30, cat: 'animal' },
   { id: 'duck_egg', name: 'Œuf de cane', icon: '🥚', sell: 70, cat: 'animal' },
+  { id: 'goose_egg', name: 'Œuf d\'oie', icon: '🥚', sell: 110, cat: 'animal' },
+  { id: 'feather', name: 'Belle plume', icon: '🪶', sell: 90, cat: 'animal' },
+  { id: 'alpaca_wool', name: 'Laine d\'alpaga', icon: '🧶', sell: 260, cat: 'animal' },
   { id: 'feather', name: 'Plume', icon: '🪶', sell: 40, cat: 'animal' },
   { id: 'milk', name: 'Lait', icon: '🥛', sell: 60, cat: 'animal' },
   { id: 'goat_milk', name: 'Lait de chèvre', icon: '🍼', sell: 95, cat: 'animal' },
