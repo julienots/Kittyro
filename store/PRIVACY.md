@@ -8,6 +8,8 @@ Mossy Meadows (« le jeu », package `com.mossymeadows.game`) est un jeu de ferm
 
 Ta partie (ferme, inventaire, progression, réglages) est enregistrée **uniquement sur ton appareil**. Le jeu n'a pas de compte, pas de serveur, et ne nous envoie aucune donnée. Désinstaller le jeu supprime ta sauvegarde (sauf sauvegarde Android automatique de ton appareil, gérée par Google).
 
+**Multijoueur local (facultatif)** : si tu héberges ou rejoins une partie locale, ton pseudo, le nom de ta ferme, l'apparence de ton personnage, ta position dans le jeu, tes émotes et tes messages de chat sont envoyés **directement aux autres téléphones du même réseau Wi-Fi**, sans passer par Internet ni par un serveur. Rien n'est conservé après la partie et rien ne nous est envoyé.
+
 ## 2. Publicités (Google AdMob)
 
 Le jeu peut afficher des publicités fournies par Google AdMob : des vidéos **facultatives** que tu choisis de regarder contre une récompense, et parfois une courte publicité lors d'un voyage ou du coucher. Pour cela, le SDK Google Mobile Ads peut collecter et partager avec Google :
@@ -26,7 +28,7 @@ Le jeu ne s'adresse pas spécifiquement aux enfants de moins de 13 ans et ne col
 
 ## 4. Permissions
 
-Internet et état du réseau (publicités uniquement), vibration (retour haptique). Aucun accès à la position précise, aux contacts, à la caméra, au micro ou aux fichiers.
+Internet, état du réseau et du Wi-Fi, multidiffusion Wi-Fi (publicités et multijoueur sur le réseau local), vibration (retour haptique). Aucun accès à la position précise, aux contacts, à la caméra, au micro ou aux fichiers.
 
 ## 5. Contact
 
@@ -43,6 +45,8 @@ Mossy Meadows (“the game”, package `com.mossymeadows.game`) is an offline fa
 ## 1. Game data
 
 Your save (farm, inventory, progress, settings) is stored **only on your device**. There is no account and no server, and the game sends us no data. Uninstalling the game deletes your save (except for your device's automatic Android backup, managed by Google).
+
+**Local multiplayer (optional)**: if you host or join a local game, your nickname, farm name, character appearance, in-game position, emotes and chat messages are sent **directly to the other phones on the same Wi-Fi network**, never over the Internet or through a server. Nothing is kept after the session and nothing is sent to us.
 
 ## 2. Advertising (Google AdMob)
 
@@ -62,7 +66,7 @@ The game is not specifically directed at children under 13 and does not knowingl
 
 ## 4. Permissions
 
-Internet and network state (ads only), vibration (haptics). No access to precise location, contacts, camera, microphone or files.
+Internet, network and Wi-Fi state, Wi-Fi multicast (ads and local-network multiplayer), vibration (haptics). No access to precise location, contacts, camera, microphone or files.
 
 ## 5. Contact
 

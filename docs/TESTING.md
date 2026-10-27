@@ -17,7 +17,7 @@
 Les scripts e2e attendent le serveur de dev (`npm run dev -- --port 5173`) ou le build servi
 (`npx http-server game/dist -p 5180`), et Chromium (`/opt/pw-browsers`).
 
-Résultat de la dernière exécution (v1.4.0) : 32/32 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 8/8 caméra & placement, 0 erreur
+Résultat de la dernière exécution (v1.5.0) : 34/34 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 9/9 caméra & placement, 0 erreur
 JavaScript sur l'ensemble des parcours.
 
 ## Android

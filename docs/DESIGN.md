@@ -119,3 +119,25 @@ faucille couchée, la lame balayant vers l'avant-gauche.
 - Android : targetSdk 36, retour prédictif (Android 13+), `isGame`. Build AdMob via Gradle/GitHub Actions
   (`android/gradle`), build sans pub via `android/build.sh`.
 - Kit Play Store dans `store/` : textes FR/EN, visuels, politique de confidentialité, formulaires.
+
+## v1.5.0 — histoire guidée, personnages, monde sans vide, multijoueur local
+- **Guidage** : quête suivie en haut à gauche (étapes + « quoi faire maintenant »), flèche dorée 3D et
+  flèche au bord de l'écran avec la distance, « ! » / « ? » au-dessus des personnages à quêtes,
+  boutons du menu avec leur nom, légende des boutons et options expliquées dans le Menu.
+- **Mode histoire** : cinématique d'introduction (barres cinéma, sous-titres), on commence par retaper
+  sa propre maison (bois + pierre) avant d'aider le village ; dialogues d'histoire par étape.
+- **Personnages** : modèles plus réalistes (proportions, mains, chaussures, visage détaillé), 20 coiffures,
+  sourcils, bouche, taches de rousseur, cils, barbe, taille ; nouveaux vêtements et accessoires.
+  Créateur et garde-robe en « studio » : aperçu 3D qui tourne au doigt, zoom visage, essayage des
+  vêtements non possédés.
+- **Maison en 1ʳᵉ personne** : murs, plafonds à poutres, portes, fenêtres à rideaux, cheminée qui crépite,
+  tableaux, lampes ; murs coupés en vue d'ensemble.
+- **Météo** : orages avec éclairs et tonnerre, pluie oblique, arc-en-ciel après la pluie.
+- **Monde sans vide** : le paysage continue au-delà des régions (routes et rivières qui se prolongent,
+  collines, forêt lointaine, mer sur la côte) ; voyage en fondu enchaîné avec le nom du lieu.
+  Textures du sol sans raccord, champs labourés continus.
+- **Gameplay** : pêche simplifiée (mode facile), canne corrigée en 1ʳᵉ personne, roue des objets
+  (appui long sur l'outil), 12 émotes, quadrillage de construction, 9 nouveaux animaux.
+- **Multijoueur local sans serveur** : un téléphone héberge sur le Wi-Fi, les autres le trouvent
+  (diffusion UDP) ou entrent son IP ; chacun garde sa ferme, on se voit dans la même région avec
+  sa tenue, on discute (chat + phrases rapides) et on fait des émotes. Rien ne sort du réseau local.
