@@ -362,3 +362,28 @@ details.howto li { margin: 4px 0; }
 .cs-title.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
 .cs-skip { position: absolute; right: calc(14px + var(--safe-r)); top: calc(11vh + 10px); background: rgba(255,248,236,.85); color: var(--ink); border-radius: 16px; padding: 6px 14px; font-size: 15px; font-weight: 600; box-shadow: var(--shadow); opacity: 0; transition: opacity .6s .6s; }
 .cutscene.on .cs-skip { opacity: 1; }
+
+/* character studio */
+.studio { display: grid; grid-template-columns: minmax(170px, 36%) 1fr; gap: 12px; width: min(940px, 94vw); height: min(66vh, 560px); align-items: stretch; }
+.studio-left { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.studio-right { overflow-y: auto; padding-right: 4px; min-height: 0; }
+.creator-names { margin-bottom: 6px; }
+.creator-names .text { padding: 6px 10px; font-size: 16px; }
+.char-preview { width: 100%; flex: 1; min-height: 120px; border-radius: 20px; background: radial-gradient(ellipse at 50% 35%, #e9f7ff 0%, #bfe6ff 70%, #a8dcf8 100%); box-shadow: inset 0 -6px 0 rgba(90,64,54,.08); overflow: hidden; touch-action: none; cursor: grab; }
+.char-preview canvas { width: 100%; height: 100%; display: block; }
+.char-preview.no-gl::after { content: 'Aperçu 3D indisponible'; display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink2); font-size: 13px; }
+.studio-ctrl { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.studio-ctrl .chip { padding: 4px 10px; font-size: 13px; }
+.studio-right { min-width: 0; }
+.studio-right .tabs { flex-wrap: wrap; }
+.studio-opts .opt { display: flex; gap: 8px; margin: 7px 0; align-items: flex-start; }
+.studio-opts .opt > span { width: 74px; flex-shrink: 0; font-weight: 600; font-size: 13.5px; padding-top: 6px; }
+.studio-opts .opt-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip.wear { display: inline-flex; align-items: center; gap: 2px; }
+.chip.wear.locked { background: #f3edff; border: 2px dashed var(--lav); }
+.chip.wear .price { font-size: 11px; font-weight: 600; color: #7a5ad8; margin-left: 4px; }
+.tryon-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #f3edff; border-radius: 14px; padding: 8px 10px; margin-top: 8px; font-size: 13px; }
+.tryon-row span { flex: 1; min-width: 160px; }
+@media (max-height: 500px) {
+  .studio { grid-template-columns: minmax(150px, 32%) 1fr; height: calc(100vh - 182px); }
+}

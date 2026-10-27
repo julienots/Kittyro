@@ -65,7 +65,7 @@ export class Player {
       const def = ANIMAL_BY_ID.horse;
       this.horse = buildAnimal('horse', def.colors[h?.color ?? 0], def.scale, this.outline);
       this.root.add(this.horse.root);
-      this.rig.root.position.y = 0.95;
+      this.rig.root.position.y = 0.82;
     } else if (!riding && this.horse) {
       this.root.remove(this.horse.root);
       this.horse = null;

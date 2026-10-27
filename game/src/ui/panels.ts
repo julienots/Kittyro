@@ -17,7 +17,8 @@ import { TOOL_TIERS } from '../data/constants';
 import { ANIMAL_BY_ID } from '../data/animals';
 import { NPC_BY_ID, FRIEND_REWARDS } from '../data/npcs';
 import { HOUSE_UPGRADES, ROOM_NAMES, PASS_TIERS, PASS_POINTS_PER_TIER, PASS_PREMIUM_GEMS, passReward, FARM_THEMES, TRAILS } from '../data/shop';
-import { WEAR, wearKey, SKIN_TONES, HAIR_COLORS, EYE_COLORS, CLOTH_COLORS, HAIR_STYLES, EYE_STYLES } from '../data/wardrobe';
+import { WEAR, wearKey, SKIN_TONES, HAIR_COLORS, EYE_COLORS, CLOTH_COLORS, HAIR_STYLES, EYE_STYLES, BROW_STYLES, MOUTH_STYLES, FACIAL_HAIR } from '../data/wardrobe';
+import { CharacterPreview } from './CharacterPreview';
 import { FESTIVALS } from '../data/festivals';
 import { HOUSE_ROOMS } from '../world/houseLayout';
 import type { Appearance, ToolId } from '../state/types';
@@ -746,32 +747,82 @@ function pass(ui: UI): void {
 }
 
 // ====================================================================== wardrobe & character editor
-export function lookEditor(ui: UI, look: Appearance, onChange: (l: Appearance) => void, ownedOnly: boolean): HTMLElement {
+/** Character studio: live 3D preview on the left, tabbed options on the right. Try-on of items you don't own yet. */
+export function lookEditor(ui: UI, look: Appearance, onChange: (l: Appearance) => void, ownedOnly: boolean, opts: { creator?: boolean; header?: HTMLElement } = {}): HTMLElement {
   const st = ui.g.ctx?.state;
-  const owned = (slot: string, id: string) => !ownedOnly || !st || st.wardrobe.includes(`${slot}:${id}`);
-  const wrap = h('div.creator');
-  const draw = () => {
-    const opt = (label: string, ...els: HTMLElement[]) => h('div.opt', null, h('span', null, label), ...els);
-    const sw = (list: number[], cur: number, set: (i: number) => void, asIndex = true) => list.map((c, i) => h(`button.swatch${(asIndex ? i : c) === cur ? '.on' : ''}`, { style: { background: `#${c.toString(16).padStart(6, '0')}` }, onclick: () => { set(asIndex ? i : c); onChange(look); draw(); } }));
-    const chips = (list: string[], cur: number, set: (i: number) => void) => list.map((n, i) => h(`button.chip${i === cur ? '.on' : ''}`, { onclick: () => { set(i); onChange(look); draw(); } }, n));
-    const wear = (slot: 'top' | 'bottom' | 'shoes' | 'hat' | 'accessory', cur: string, set: (id: string) => void) => WEAR.filter((w) => w.slot === slot).map((w) => {
-      const ok = owned(slot, w.id);
-      return h(`button.chip${w.id === cur ? '.on' : ''}`, { style: ok ? {} : { opacity: '.4' }, onclick: () => { if (!ok) { ui.toast('À acheter à la Boutique Cozy', '🛍️'); return; } set(w.id); onChange(look); draw(); } }, `${w.icon} ${w.name}`);
-    });
-    wrap.replaceChildren(
-      opt('Peau', ...sw(SKIN_TONES, look.skin, (i) => (look.skin = i))),
-      opt('Coiffure', ...chips(HAIR_STYLES, look.hairStyle, (i) => (look.hairStyle = i))),
-      opt('Cheveux', ...sw(HAIR_COLORS, look.hairColor, (i) => (look.hairColor = i))),
-      opt('Yeux', ...chips(EYE_STYLES, look.eyeStyle, (i) => (look.eyeStyle = i)), ...sw(EYE_COLORS, look.eyeColor, (i) => (look.eyeColor = i))),
-      opt('Haut', ...wear('top', look.top, (id) => (look.top = id))),
-      opt('', ...sw(CLOTH_COLORS, look.topColor, (c) => (look.topColor = c), false)),
-      opt('Bas', ...wear('bottom', look.bottom, (id) => (look.bottom = id)), ...sw(CLOTH_COLORS, look.bottomColor, (c) => (look.bottomColor = c), false)),
-      opt('Chaussures', ...wear('shoes', look.shoes, (id) => (look.shoes = id)), ...sw(CLOTH_COLORS, look.shoesColor, (c) => (look.shoesColor = c), false)),
-      opt('Chapeau', ...wear('hat', look.hat, (id) => (look.hat = id)), ...sw(CLOTH_COLORS, look.hatColor, (c) => (look.hatColor = c), false)),
-      opt('Accessoire', ...wear('accessory', look.accessory, (id) => (look.accessory = id))),
-      opt('Joues', h(`button.chip${look.cheeks ? '.on' : ''}`, { onclick: () => { look.cheeks = !look.cheeks; onChange(look); draw(); } }, look.cheeks ? '😊 Rosées' : '🙂 Neutres')),
-    );
+  const free = (w: { price: number; gems?: number; tokens?: number; pass?: boolean }) => w.price === 0 && !w.gems && !w.tokens && !w.pass;
+  const isOwned = (slot: string, id: string) => {
+    const w = WEAR.find((x) => x.slot === slot && x.id === id);
+    if (!w) return true;
+    if (!ownedOnly) return free(w);
+    return !st || st.wardrobe.includes(`${slot}:${id}`);
   };
+  const preview = new CharacterPreview();
+  preview.setLook(look);
+  let tab = (st?.flags.studioTab as string) ?? 'face';
+  const body = h('div.studio-opts');
+  const tabsEl = h('div.tabs');
+  const tryEl = h('div.tryon');
+  const changed = () => { preview.setLook(look); onChange(look); draw(); };
+  const priceOf = (w: (typeof WEAR)[number]) => (w.gems ? `${w.gems} 💎` : w.tokens ? `${w.tokens} 🎟️` : w.pass ? 'Cozy Pass' : `${w.price} 🪙`);
+  const draw = () => {
+    const opt = (label: string, ...els: (HTMLElement | null)[]) => h('div.opt', null, label ? h('span', null, label) : null, h('div.opt-row', null, ...els.filter(Boolean) as HTMLElement[]));
+    const sw = (list: number[], cur: number, set: (i: number) => void, asIndex = true) => list.map((c, i) => h(`button.swatch${(asIndex ? i : c) === cur ? '.on' : ''}`, { style: { background: `#${c.toString(16).padStart(6, '0')}` }, onclick: () => { set(asIndex ? i : c); changed(); } }));
+    const chips = (list: string[], cur: number, set: (i: number) => void) => list.map((n, i) => h(`button.chip${i === cur ? '.on' : ''}`, { onclick: () => { set(i); changed(); } }, n));
+    const wear = (slot: 'top' | 'bottom' | 'shoes' | 'hat' | 'accessory', cur: string, set: (id: string) => void) => WEAR.filter((w) => w.slot === slot && (!opts.creator || free(w))).map((w) => {
+      const ok = isOwned(slot, w.id);
+      return h(`button.chip.wear${w.id === cur ? '.on' : ''}${ok ? '' : '.locked'}`, { onclick: () => { set(w.id); preview.setFocus(slot === 'hat'); changed(); } }, h('span.wi', null, w.icon), ` ${w.name}`, ok ? null : h('small.price', null, priceOf(w)));
+    });
+    const toggle = (label: string, on: boolean, set: (v: boolean) => void) => h(`button.chip${on ? '.on' : ''}`, { onclick: () => { set(!on); changed(); } }, `${on ? '✓' : '○'} ${label}`);
+    const T: [string, string][] = [['face', '🙂 Visage'], ['hair', '💇 Cheveux'], ['top', '👕 Haut'], ['bottom', '👖 Bas'], ['hat', '🎩 Chapeau'], ['acc', '🎒 Accessoires']];
+    tabsEl.replaceChildren(...T.map(([id, l]) => h(`button.tab${tab === id ? '.on' : ''}`, { onclick: () => { tab = id; if (st) st.flags.studioTab = id; preview.setFocus(id === 'face' || id === 'hair' || id === 'hat'); draw(); } }, l)));
+    let content: HTMLElement[] = [];
+    if (tab === 'face') content = [
+      opt('Peau', ...sw(SKIN_TONES, look.skin, (i) => (look.skin = i))),
+      opt('Yeux', ...chips(EYE_STYLES, look.eyeStyle, (i) => (look.eyeStyle = i))),
+      opt('Couleur', ...sw(EYE_COLORS, look.eyeColor, (i) => (look.eyeColor = i))),
+      opt('Sourcils', ...chips(BROW_STYLES, look.brow ?? 0, (i) => (look.brow = i))),
+      opt('Bouche', ...chips(MOUTH_STYLES, look.mouth ?? 0, (i) => (look.mouth = i))),
+      opt('Détails', toggle('😊 Joues rosées', look.cheeks, (v) => (look.cheeks = v)), toggle('✨ Taches de rousseur', !!look.freckles, (v) => (look.freckles = v)), toggle('👁️ Cils', !!look.lashes, (v) => (look.lashes = v))),
+      opt('Barbe', ...chips(FACIAL_HAIR, look.facialHair ?? 0, (i) => (look.facialHair = i))),
+      opt('Taille', ...([[0.93, 'Petit·e'], [1, 'Moyen·ne'], [1.07, 'Grand·e']] as [number, string][]).map(([v, l]) => h(`button.chip${Math.abs((look.height ?? 1) - v) < 0.01 ? '.on' : ''}`, { onclick: () => { look.height = v; changed(); } }, l))),
+    ];
+    if (tab === 'hair') content = [
+      opt('Coiffure', ...chips(HAIR_STYLES, look.hairStyle, (i) => (look.hairStyle = i))),
+      opt('Couleur', ...sw(HAIR_COLORS, look.hairColor, (i) => (look.hairColor = i))),
+    ];
+    if (tab === 'top') content = [opt('', ...wear('top', look.top, (id) => (look.top = id))), opt('Couleur', ...sw(CLOTH_COLORS, look.topColor, (c) => (look.topColor = c), false))];
+    if (tab === 'bottom') content = [
+      opt('Bas', ...wear('bottom', look.bottom, (id) => (look.bottom = id))), opt('Couleur', ...sw(CLOTH_COLORS, look.bottomColor, (c) => (look.bottomColor = c), false)),
+      opt('Chaussures', ...wear('shoes', look.shoes, (id) => (look.shoes = id))), opt('Couleur', ...sw(CLOTH_COLORS, look.shoesColor, (c) => (look.shoesColor = c), false)),
+    ];
+    if (tab === 'hat') content = [opt('', ...wear('hat', look.hat, (id) => (look.hat = id))), opt('Couleur', ...sw(CLOTH_COLORS, look.hatColor, (c) => (look.hatColor = c), false))];
+    if (tab === 'acc') content = [opt('', ...wear('accessory', look.accessory, (id) => (look.accessory = id)))];
+    body.replaceChildren(...content);
+    // try-on summary: what you're wearing but don't own yet
+    const missing = (['top', 'bottom', 'shoes', 'hat', 'accessory'] as const).map((slot) => WEAR.find((w) => w.slot === slot && w.id === (look as any)[slot])).filter((w): w is (typeof WEAR)[number] => !!w && !isOwned(w.slot, w.id));
+    tryEl.replaceChildren(...(missing.length ? [h('div.tryon-row', null, h('span', null, `👗 Essayage : ${missing.map((w) => `${w.icon} ${w.name} (${priceOf(w)})`).join(', ')}`),
+      ...missing.filter((w) => !w.pass && st).map((w) => h('button.btn.small.peach', { onclick: () => {
+        const shopId = w.tokens ? 'festival' : 'boutique';
+        const offer = ui.g.ctx.shop.offers(shopId).find((o) => o.key === `wear:${w.slot}:${w.id}`);
+        if (offer && ui.g.ctx.shop.buy(offer)) { ui.g.audio.play('coin'); ui.toast(`${w.name} achetée !`, w.icon, 'good'); draw(); }
+      } }, `Acheter ${w.icon}`)))] : []));
+    (wrap as any).__missing = missing.length;
+  };
+  const ctrl = h('div.studio-ctrl', null,
+    h('button.chip', { onclick: () => preview.randomEmote() }, '👋 Bouger'),
+    h('button.chip', { onclick: () => { const f = !(wrap as any).__face; (wrap as any).__face = f; preview.setFocus(f); } }, '🔍 Zoom'),
+    opts.creator ? h('button.chip', { onclick: () => {
+      const r = (n: number) => Math.floor(Math.random() * n);
+      const pick = (slot: string) => { const l = WEAR.filter((w) => w.slot === slot && free(w)); return l[r(l.length)].id; };
+      Object.assign(look, { skin: r(SKIN_TONES.length), hairStyle: r(HAIR_STYLES.length), hairColor: r(HAIR_COLORS.length), eyeStyle: r(5), eyeColor: r(EYE_COLORS.length), brow: r(4), mouth: r(4), freckles: Math.random() < 0.3, lashes: Math.random() < 0.5, facialHair: Math.random() < 0.15 ? 1 + r(3) : 0, top: pick('top'), bottom: pick('bottom'), shoes: pick('shoes'), hat: Math.random() < 0.4 ? pick('hat') : 'none', accessory: Math.random() < 0.3 ? pick('accessory') : 'none', topColor: CLOTH_COLORS[r(CLOTH_COLORS.length)], bottomColor: CLOTH_COLORS[r(CLOTH_COLORS.length)], shoesColor: CLOTH_COLORS[r(CLOTH_COLORS.length)], hatColor: CLOTH_COLORS[r(CLOTH_COLORS.length)] });
+      changed();
+      preview.randomEmote();
+    } }, '🎲 Hasard') : null,
+  );
+  const wrap = h('div.studio', null, h('div.studio-left', null, preview.el, h('div.muted.center', { style: { fontSize: '12px' } }, '☝️ Glissez pour tourner'), ctrl), h('div.studio-right', null, opts.header ?? null, tabsEl, body, tryEl));
+  (wrap as any).__dispose = () => preview.dispose();
+  preview.setFocus(tab === 'face' || tab === 'hair' || tab === 'hat');
   draw();
   return wrap;
 }
@@ -780,15 +831,17 @@ function wardrobe(ui: UI): void {
   const g = ui.g;
   const st = g.ctx.state;
   const look = JSON.parse(JSON.stringify(st.player.look)) as Appearance;
-  g.previewLook(look);
-  const themes = h('div.row', { style: { flexWrap: 'wrap' } }, ...FARM_THEMES.filter((t) => (st.flags.themesOwned ?? ['classic']).includes(t.id)).map((t) => h(`button.chip${st.flags.theme === t.id ? '.on' : ''}`, { onclick: () => { st.flags.theme = t.id; g.refreshWorld('all'); wardrobe(ui); } }, t.name)));
-  const trails = h('div.row', { style: { flexWrap: 'wrap' } }, ...TRAILS.filter((t) => (st.flags.trailsOwned ?? ['none']).includes(t.id)).map((t) => h(`button.chip${st.flags.trail === t.id ? '.on' : ''}`, { onclick: () => { st.flags.trail = t.id; wardrobe(ui); } }, t.name)));
-  ui.showPanel('wardrobe', 'Garde-robe', [
-    lookEditor(ui, look, (l) => g.previewLook(l), true),
-    h('h3', null, '🎨 Thème de la ferme'), themes,
-    h('h3', null, '✨ Traînée de pas'), trails,
-    h('div.center', { style: { marginTop: '14px' } }, h('button.btn', { onclick: () => { st.player.look = look; g.previewLook(null); g.refreshLook(); ui.closePanel(); ui.toast('Nouveau style !', '👗', 'good'); } }, '✓ Valider')),
-  ], { size: 'wide', onClose: () => g.previewLook(null) });
+  const ed = lookEditor(ui, look, () => {}, true);
+  const themes = h('div.row', { style: { flexWrap: 'wrap' } }, ...FARM_THEMES.filter((t) => (st.flags.themesOwned ?? ['classic']).includes(t.id)).map((t) => h(`button.chip${st.flags.theme === t.id ? '.on' : ''}`, { onclick: () => { st.flags.theme = t.id; g.refreshWorld('all'); ui.toast(`Thème : ${t.name}`, '🎨'); } }, t.name)));
+  const trails = h('div.row', { style: { flexWrap: 'wrap' } }, ...TRAILS.filter((t) => (st.flags.trailsOwned ?? ['none']).includes(t.id)).map((t) => h(`button.chip${st.flags.trail === t.id ? '.on' : ''}`, { onclick: () => { st.flags.trail = t.id; ui.toast(`Traînée : ${t.name}`, '✨'); } }, t.name)));
+  ui.showPanel('wardrobe', '👗 Garde-robe', [
+    ed,
+    h('div.center', { style: { marginTop: '10px' } }, h('button.btn', { onclick: () => {
+      if ((ed as any).__missing) { ui.toast('Achetez d\'abord les vêtements en essayage (ou changez-les) 🛍️', '👗', 'warn'); return; }
+      st.player.look = look; g.refreshLook(); ui.closePanel(); ui.toast('Nouveau style !', '👗', 'good');
+    } }, '✓ Valider ce style')),
+    h('details.howto', null, h('summary', null, '🎨 Thème de la ferme & ✨ traînée de pas'), themes, h('div', { style: { height: '8px' } }), trails),
+  ], { size: 'wide', onClose: () => (ed as any).__dispose?.() });
 }
 
 // ====================================================================== settings

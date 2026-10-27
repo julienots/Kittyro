@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { Appearance } from '../state/types';
 import type { Player } from './Player';
 import { fpToolMesh } from '../models/FPTools';
+import { LONG_SLEEVE_TOPS as LONG_SLEEVES } from '../models/Character';
 import { SKIN_TONES } from '../data/wardrobe';
 import { damp } from '../core/MathUtil';
 import { toonGradient, outlineMat } from '../render/Materials';
@@ -18,7 +19,6 @@ import { toonGradient, outlineMat } from '../render/Materials';
  * cast/reel and cheer gestures. Switching tools lowers and raises the hand.
  */
 
-const LONG_SLEEVES = new Set(['hoodie', 'sweater', 'raincoat', 'explorer', 'kimono', 'starcloak']);
 const ease = (t: number) => t * t * (3 - 2 * t);
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
@@ -168,7 +168,7 @@ export class FPHands {
     const skin = this.mat(skinCol);
     const nail = this.mat(new THREE.Color(skinCol).lerp(new THREE.Color(0xffe8e8), 0.55).getHex());
     const long = LONG_SLEEVES.has(look.top);
-    const sleeveCol = look.top === 'overalls' ? 0xfff4e0 : look.topColor;
+    const sleeveCol = look.top === 'overalls' || look.top === 'vest' || look.top === 'apron' ? 0xfff4e6 : look.topColor;
     const sleeve = this.mat(sleeveCol);
     const cuff = this.mat(new THREE.Color(sleeveCol).multiplyScalar(0.82).getHex());
     for (const side of [-1, 1] as const) {

@@ -115,6 +115,8 @@ export function repair(raw: any): GameState {
   s.inventory = s.inventory.map((it) => (it && typeof it.id === 'string' && it.qty > 0 ? it : null));
   if (!Number.isFinite(s.player.coins) || s.player.coins < 0) s.player.coins = 0;
   if (!s.farm.placed.some((p) => p.kind === 'house')) s.farm.placed.unshift(base.farm.placed[0]);
+  // free clothes added in updates are owned by everyone
+  for (const k of base.wardrobe) if (!s.wardrobe.includes(k)) s.wardrobe.push(k);
   return s;
 }
 

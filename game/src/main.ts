@@ -4,6 +4,8 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
 if (params.has('debugview')) {
   import('./debugview').then((m) => m.debugBoot());
+} else if (params.has('charlab')) {
+  import('./charlab').then((m) => m.charLab());
 } else {
   const game = new Game(canvas);
   game.boot().catch((e) => {

@@ -7,11 +7,11 @@ import { CLOTH_COLORS } from '../data/wardrobe';
 import { seasonOfDay } from '../data/constants';
 import { newUid } from './Building';
 
-const TOPS = ['tee', 'overalls', 'hoodie', 'vest', 'dress', 'apron', 'sweater', 'explorer'];
+const TOPS = ['tee', 'overalls', 'hoodie', 'vest', 'dress', 'apron', 'sweater', 'explorer', 'shirt', 'tank', 'jacket'];
 const BOTTOMS = ['pants', 'shorts', 'skirt', 'cargo'];
 const SHOES = ['boots', 'sneakers', 'flats', 'rainboots'];
-const HATS = ['none', 'none', 'none', 'straw', 'cap', 'beanie', 'flower', 'bandana', 'chef'];
-const ACCS = ['none', 'none', 'none', 'glasses', 'scarf', 'flower_pin', 'backpack'];
+const HATS = ['none', 'none', 'none', 'straw', 'cap', 'beanie', 'flower', 'bandana', 'chef', 'beret', 'bow'];
+const ACCS = ['none', 'none', 'none', 'glasses', 'scarf', 'flower_pin', 'backpack', 'earrings', 'necklace', 'satchel'];
 
 /**
  * Hamlet logic: homes, jobs, happiness, daily production, villager arrivals,
@@ -114,10 +114,16 @@ export class HamletSystem {
     const used = new Set(this.st.villagers.map((v) => v.name));
     const names = VILLAGER_NAMES.filter((n) => !used.has(n) && n !== this.ctx.state.player.name);
     const look: Appearance = {
-      skin: r.int(0, 5), hairStyle: r.int(0, 9), hairColor: r.int(0, 9), eyeStyle: r.int(0, 4), eyeColor: r.int(0, 4),
+      skin: r.int(0, 7), hairStyle: r.int(0, 19), hairColor: r.int(0, 13), eyeStyle: r.int(0, 4), eyeColor: r.int(0, 4),
       top: r.pick(TOPS), topColor: r.pick(CLOTH_COLORS), bottom: r.pick(BOTTOMS), bottomColor: r.pick(CLOTH_COLORS),
       shoes: r.pick(SHOES), shoesColor: r.pick(CLOTH_COLORS), hat: r.pick(HATS), hatColor: r.pick(CLOTH_COLORS), accessory: r.pick(ACCS), cheeks: r.chance(0.7),
     };
+    look.brow = r.int(0, 3);
+    look.mouth = r.chance(0.6) ? 0 : r.int(1, 3);
+    look.freckles = r.chance(0.2);
+    look.lashes = r.chance(0.45);
+    look.facialHair = r.chance(0.15) ? r.int(1, 3) : 0;
+    look.height = r.pick([0.94, 0.97, 1, 1, 1.03, 1.06]);
     return {
       uid: newUid('v'), name: names.length ? r.pick(names) : `Voyageur ${this.population() + 1}`, look, trait: r.pick(TRAIT_IDS),
       homeUid: null, jobUid: null, happiness: 60, friendship: 0, arrivedDay: this.ctx.state.time.day, wish: null, talkedDay: 0, giftedDay: 0,

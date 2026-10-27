@@ -40,6 +40,14 @@ export interface Appearance {
   hatColor: number;
   accessory: string;
   cheeks: boolean;
+  /** v1.5 face options (optional for older saves) */
+  brow?: number;
+  mouth?: number;
+  freckles?: boolean;
+  lashes?: boolean;
+  facialHair?: number;
+  /** body height multiplier 0.92..1.08 */
+  height?: number;
 }
 
 export interface CropState {
