@@ -135,6 +135,7 @@ export class UI {
       h('div.fp-vignette'),
       h('div.crosshair'),
       this.joyHint,
+      this.chatDock,
     );
     // pointer events on interactive children only
     for (const el of this.hud.querySelectorAll('button, .card, .pill')) (el as HTMLElement).style.pointerEvents = 'auto';
@@ -406,6 +407,48 @@ export class UI {
     setTimeout(() => snap.remove(), 900);
     if (tag) setTimeout(() => tag.classList.remove('show'), 1700);
     if (tag) setTimeout(() => tag.remove(), 2400);
+  }
+
+  // ------------------------------------------------------------ local multiplayer chat
+  private chatLog = h('div.chat-log');
+  private chatDock = h('div.chat-dock.hidden', null, this.chatLog,
+    h('button.icon-btn.labeled.chat-btn', { onclick: (e: Event) => { e.stopPropagation(); this.openChat(); } }, h('span.ic', null, '💬'), h('small', null, 'Chat')));
+  private chatBar: HTMLElement | null = null;
+
+  netChanged(): void {
+    this.chatDock.classList.toggle('hidden', !this.g.net.active);
+    if (this.panelName === 'multiplayer') this.openPanel('multiplayer');
+  }
+
+  chatLine(line: { name: string; text: string; mine: boolean }): void {
+    const el = h(`div.chat-line${line.mine ? '.mine' : ''}`, null, h('b', null, `${line.name} : `), line.text);
+    this.chatLog.appendChild(el);
+    while (this.chatLog.children.length > 5) this.chatLog.firstElementChild?.remove();
+    setTimeout(() => el.classList.add('old'), 12000);
+  }
+
+  openChat(): void {
+    if (this.chatBar) { this.chatBar.remove(); this.chatBar = null; return; }
+    const input = h('input.text', { type: 'text', maxlength: 120, placeholder: 'Votre message…', enterkeyhint: 'send' }) as HTMLInputElement;
+    const send = (t: string) => {
+      if (!t.trim()) return;
+      this.g.say(t);
+      input.value = '';
+      close();
+    };
+    const close = () => { this.chatBar?.remove(); this.chatBar = null; };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') send(input.value);
+      if (e.key === 'Escape') close();
+    });
+    const quick = ['Salut ! 👋', 'Viens voir ! 👀', 'Merci ! 💕', 'On va au village ?', 'Bravo ! 🎉', 'Je reviens 🏃'];
+    this.chatBar = h('div.chat-bar', { onpointerdown: (e: Event) => e.stopPropagation() },
+      h('div.chat-quick', null, ...quick.map((q) => h('button.chip', { onclick: () => send(q) }, q))),
+      h('div.row', null, input, h('button.btn.small', { onclick: () => send(input.value) }, 'Envoyer'), h('button.btn.small.ghost', { onclick: close }, '✕')),
+    );
+    this.root.appendChild(this.chatBar);
+    setTimeout(() => input.focus(), 50);
   }
 
   // ------------------------------------------------------------ panels

@@ -398,3 +398,17 @@ describe('rewarded ads (always optional, capped per day)', () => {
     expect(c.adRewards.can('hamlet_boost')).toBe(false); // no hamlet workers yet
   });
 });
+
+describe('local multiplayer', () => {
+  it('only keeps safe appearance fields from the network', async () => {
+    const { cleanLook } = await import('../src/net/LocalNet');
+    const look = cleanLook({ skin: 3, top: 'x'.repeat(500), hairStyle: 'evil', cheeks: 'yes', height: 9, __proto__: { hack: 1 }, extra: { a: 1 } });
+    expect(look.skin).toBe(3);
+    expect(look.top.length).toBeLessThanOrEqual(24);
+    expect(typeof look.hairStyle).toBe('number');
+    expect(typeof look.cheeks).toBe('boolean');
+    expect(look.height).toBe(1.08);
+    expect((look as any).extra).toBeUndefined();
+    expect(cleanLook(null).top).toBeTruthy();
+  });
+});

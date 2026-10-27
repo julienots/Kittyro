@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Ctx } from '../systems/Context';
 import type { GameState, RegionId, ToolId, Appearance } from '../state/types';
-import { createNewGame, FARM } from '../state/newGame';
+import { createNewGame, FARM, DEFAULT_LOOK } from '../state/newGame';
 import { SaveManager } from '../save/SaveManager';
 import { loadSettings, saveSettings, type Settings } from '../save/Settings';
 import { Renderer } from '../render/Renderer';
@@ -30,6 +30,8 @@ import { FishingGame } from '../minigames/Fishing';
 import { runMinigame, type MiniId, MINI_INFO } from '../minigames/Festival';
 import { Placement } from './Placement';
 import { Guide, type GuideInfo } from './Guide';
+import { LocalNet, type Me } from '../net/LocalNet';
+import { RemotePlayers } from '../entities/RemotePlayers';
 import { Cutscene, type Shot } from './Cutscene';
 import { EMOTES, EMOTE_BY_ID } from '../entities/Emotes';
 import { NODE_KINDS } from '../data/nodes';
@@ -87,7 +89,10 @@ export class Game implements GameApi {
   guide!: Guide;
   private emoteBubble: THREE.Sprite | null = null;
   cutscene: Cutscene | null = null;
-  net: { sendEmote(id: string): void } | null = null;
+  /** local multiplayer (same Wi-Fi, no server) */
+  readonly net = new LocalNet(() => this.netMe());
+  readonly remotes = new RemotePlayers(this.net, () => (this.title ? '' : this.world?.region ?? ''), (x, z) => this.world?.heightAt(x, z) ?? 0);
+  private moveSpeed = 0;
   private emoteBubbleT = 0;
   input: Input;
   ui: UI;
@@ -134,7 +139,17 @@ export class Game implements GameApi {
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
     this.tapMarker = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.36, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
-    scene.add(this.tapMarker);
+    scene.add(this.tapMarker, this.remotes.group);
+    this.net.onToast = (t, i) => this.ui.toast(t, i);
+    this.net.onChange = () => this.ui.netChanged();
+    this.net.onEmote = (p, id) => this.remotes.emote(p.id, id);
+    this.net.onChat = (line) => {
+      if (!line.mine) {
+        this.remotes.say(line.from, line.text);
+        audio.play('pop');
+      } else this.showEmoteBubble('💬', 2);
+      this.ui.chatLine(line);
+    };
     this.applyInputSettings();
     window.addEventListener('resize', () => this.renderer.resize());
     ads.onShow = (on) => {
@@ -707,6 +722,9 @@ export class Game implements GameApi {
     this.entities.updateMarkers(dt);
     this.guide.update(dt, !this.title && !this.placement.active && !this.cutscene && this.settings.guideArrow);
     this.updateEmoteBubble(dt);
+    this.moveSpeed = speed;
+    if (!this.title) this.net.update(dt);
+    this.remotes.update(dt, fp);
     this.fishing.update(dt);
     // camera & sky
     this.placement.update(dt);
@@ -1725,7 +1743,27 @@ export class Game implements GameApi {
     else if (id === 'dance') this.particles.notes(p.x, p.y + 1.8, p.z, 4);
     else if (id === 'jump' || id === 'clap' || id === 'thumbs') this.particles.sparkle(p.x, p.y + 1.4, p.z, 0xfff0a0, 8);
     audio.play(id === 'sad' || id === 'angry' ? 'pop' : 'sparkle');
-    this.net?.sendEmote(id);
+    this.net.sendEmote(id);
+  }
+
+  private netMe(): Me {
+    const st = this.ctx?.state;
+    return {
+      name: st?.player.name || 'Joueur',
+      farm: st?.player.farmName || '',
+      look: st?.player.look ?? DEFAULT_LOOK,
+      region: this.title ? '' : this.world?.region ?? '',
+      x: this.player?.pos.x ?? 0,
+      z: this.player?.pos.z ?? 0,
+      facing: this.player?.facing ?? 0,
+      moving: this.moveSpeed,
+      riding: !!st?.player.riding,
+    };
+  }
+
+  /** Chat for local multiplayer (also works alone, as a notepad bubble). */
+  say(text: string): void {
+    this.net.say(text);
   }
 
   showEmoteBubble(icon: string, dur = 2.2): void {

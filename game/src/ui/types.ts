@@ -50,4 +50,7 @@ export interface GameApi {
   replayIntro(): void;
   /** rainbow strength for the overhead-view sky arc (0 = none) */
   rainbowOverlay(): number;
+  /** local multiplayer (same Wi-Fi, no server) */
+  readonly net: import('../net/LocalNet').LocalNet;
+  say(text: string): void;
 }

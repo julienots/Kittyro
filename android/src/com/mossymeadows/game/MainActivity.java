@@ -30,12 +30,14 @@ import java.nio.charset.Charset;
 /**
  * Mossy Meadows Android shell: a fullscreen, hardware accelerated WebView that
  * serves the game from APK assets on a private https origin, plus a small
- * native bridge for robust (atomic) save files in app storage.
+ * native bridge for robust (atomic) save files in app storage and local
+ * multiplayer over Wi-Fi (LanBridge).
  */
 public class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.mossymeadows.local/";
     private WebView web;
     private AdsBackend ads = new NoAds();
+    private LanBridge lan;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -68,6 +70,8 @@ public class MainActivity extends Activity {
         web.addJavascriptInterface(new NativeBridge(), "MossyNative");
         ads = createAds();
         web.addJavascriptInterface(new AdsBridge(), "MossyAds");
+        lan = new LanBridge(this);
+        web.addJavascriptInterface(lan, "KittyNet");
         registerBackCallback();
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -202,6 +206,16 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** Local multiplayer events, delivered to window.__kittyNet on the UI thread. */
+    void netEvent(final String json) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (web != null) web.evaluateJavascript("window.__kittyNet && window.__kittyNet(" + org.json.JSONObject.quote(json) + ")", null);
+            }
+        });
+    }
+
     /** JavaScript side of the ads (window.MossyAds). */
     private class AdsBridge {
         @JavascriptInterface
@@ -243,6 +257,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (lan != null) lan.stop();
         if (web != null) {
             web.destroy();
             web = null;

@@ -882,6 +882,7 @@ function settings(ui: UI): void {
   ui.showPanel('settings', 'Menu', [
     h('div.row', { style: { flexWrap: 'wrap', marginBottom: '8px' } },
       h('button.btn.small', { onclick: () => guide(ui) }, '📖 Guide du jeu'),
+      h('button.btn.small.sky', { onclick: () => multiplayer(ui) }, g.net.active ? `👥 Multijoueur (${g.net.peers.size + 1})` : '👥 Jouer à plusieurs'),
       h('button.btn.small.peach', { onclick: () => wardrobe(ui) }, '👗 Garde-robe'),
       h('button.btn.small.lav', { onclick: () => pass(ui) }, '🎟️ Cozy Pass'),
       h('button.btn.small.sky', { onclick: () => friends(ui) }, '🙂 Habitants'),
@@ -1046,7 +1047,60 @@ function daySummary(ui: UI, data: { day: number; earned: number; weather: string
   ), { size: 'narrow' });
 }
 
+// ====================================================================== local multiplayer
+let typedIp = '';
+function multiplayer(ui: UI): void {
+  const g = ui.g;
+  const net = g.net;
+  const lan = net.lanAvailable;
+  const ipInput = h('input.text', { type: 'text', inputmode: 'decimal', placeholder: 'ex. 192.168.1.23', value: typedIp, oninput: (e: Event) => { typedIp = (e.target as HTMLInputElement).value; }, style: { maxWidth: '170px' } }) as HTMLInputElement;
+  const how = h('div.mp-how', null,
+    h('p', null, '📶 Tout le monde sur le ', h('b', null, 'même Wi-Fi'), ' (ou sur le partage de connexion d\'un des téléphones). Aucun serveur, aucun compte : les téléphones se parlent directement.'),
+    h('p', null, '1️⃣ Un joueur touche ', h('b', null, '« Héberger »'), '. 2️⃣ Les autres touchent ', h('b', null, '« Chercher »'), ' puis la partie trouvée (ou tapent l\'adresse IP affichée chez l\'hôte).'),
+    h('p', null, '🌾 Chacun garde sa propre ferme et sa sauvegarde. Dans la même région, vous vous voyez avec vos tenues, vous discutez 💬 et faites des émotes 😊 ensemble (8 joueurs max).'),
+  );
+  const body: (HTMLElement | null)[] = [];
+  if (net.active) {
+    const status = net.mode === 'hosting' ? `🏠 Vous hébergez — adresse : ${net.hostIp || '?'}` : net.mode === 'joining' ? `⏳ Connexion à ${net.hostIp}…` : net.transport === 'tab' ? '🧪 Partie entre onglets de ce navigateur' : `🤝 Connecté à ${net.hostIp}`;
+    body.push(
+      h('div.card.mp-status', null, h('b', null, status)),
+      h('h3', null, `👥 Joueurs (${net.peers.size + 1})`),
+      h('div.mp-list', null,
+        h('div.mp-player', null, '⭐ ', h('b', null, g.ctx.state.player.name || 'Vous'), h('span.muted', null, ` · ${g.ctx.state.player.farmName} (vous)`)),
+        ...[...net.peers.values()].map((p) => h('div.mp-player', null, '🙂 ', h('b', null, p.name), h('span.muted', null, ` · ${p.farm || 'ferme'} — ${p.region ? (REGION_BY_ID as Record<string, { name: string }>)[p.region]?.name ?? p.region : '…'}`))),
+      ),
+      net.peers.size === 0 ? h('p.muted', null, net.mode === 'hosting' ? 'En attente des autres joueurs… Ils doivent toucher « Chercher » sur le même Wi-Fi.' : 'En attente des autres joueurs…') : null,
+      h('div.row', { style: { flexWrap: 'wrap', marginTop: '8px' } },
+        h('button.btn.small', { onclick: () => { ui.closePanel(); ui.openChat(); } }, '💬 Discuter'),
+        h('button.btn.small.peach', { onclick: () => { net.leave(); multiplayer(ui); } }, '🚪 Quitter la partie'),
+      ),
+    );
+  } else if (lan) {
+    net.scan(true);
+    const found = [...net.found.entries()];
+    body.push(
+      h('div.row', { style: { flexWrap: 'wrap' } },
+        h('button.btn', { onclick: () => { if (net.host()) multiplayer(ui); } }, '🏠 Héberger une partie'),
+        h('button.btn.sky', { onclick: () => { net.scan(true); ui.toast('Recherche des parties sur le Wi-Fi…', '🔎'); multiplayer(ui); } }, '🔎 Chercher'),
+      ),
+      h('h3', null, '📡 Parties trouvées'),
+      found.length
+        ? h('div.mp-list', null, ...found.map(([ip, f]) => h('button.btn.small.mp-found', { onclick: () => { net.scan(false); net.join(ip); multiplayer(ui); } }, `🎮 ${f.name} — ${ip}`)))
+        : h('p.muted', null, 'Aucune partie pour l\'instant… (la liste se met à jour toute seule)'),
+      h('div.row', { style: { marginTop: '6px' } }, h('span.muted', null, 'Ou par adresse IP :'), ipInput, h('button.btn.small.ghost', { onclick: () => { if (ipInput.value.trim()) { net.scan(false); net.join(ipInput.value); multiplayer(ui); } } }, 'Rejoindre')),
+      h('p.muted', { style: { fontSize: '12px' } }, `Votre adresse sur ce Wi-Fi : ${net.localIp() || 'pas de Wi-Fi détecté'}`),
+    );
+  } else {
+    body.push(
+      h('div.card', null, '📱 Le jeu en Wi-Fi local fonctionne dans l\'application Android. Dans un navigateur d\'ordinateur, vous pouvez l\'essayer entre deux onglets.'),
+      h('div.row', null, h('button.btn', { onclick: () => { net.joinTabs(); multiplayer(ui); } }, '🧪 Essayer entre onglets')),
+    );
+  }
+  ui.showPanel('multiplayer', '👥 Multijoueur local', [...body, h('h3', null, '❓ Comment ça marche'), how], { onClose: () => setTimeout(() => { if (ui.panelName !== 'multiplayer') net.scan(false); }, 0) });
+}
+
 export const PANELS = {
+  multiplayer,
   inventory, quests, collections, map, shop, sell, craft, restore, build, houseDecor, guide, adRewards, hamlet, hamletBuilding, villager, villagerGift, upgrades, seeds, gift, friends, animal, elevator, pass, wardrobe, settings, festivalsInfo, daySummary,
 };
 export { BUILDING_BY_ID, DECOR, TOOL_BY_ID };
