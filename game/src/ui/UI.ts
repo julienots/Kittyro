@@ -320,8 +320,15 @@ export class UI {
     this.root.appendChild(this.wheel);
   }
 
+  private rainbowEl: HTMLElement | null = null;
   update(dt: number): void {
     this.updateGuideOverlay();
+    const rb = this.g.rainbowOverlay();
+    if (rb > 0.01 && !this.rainbowEl) { this.rainbowEl = h('div.rainbow-overlay'); this.root.prepend(this.rainbowEl); }
+    if (this.rainbowEl) {
+      this.rainbowEl.style.opacity = String(Math.min(1, rb) * 0.85);
+      if (rb <= 0.01) { this.rainbowEl.remove(); this.rainbowEl = null; }
+    }
     this.hudT -= dt;
     if (this.hudT <= 0 && this.hud) {
       this.hudT = 0.25;

@@ -48,4 +48,6 @@ export interface GameApi {
   emotes(): { id: string; icon: string; name: string }[];
   emote(id: string): void;
   replayIntro(): void;
+  /** rainbow strength for the overhead-view sky arc (0 = none) */
+  rainbowOverlay(): number;
 }

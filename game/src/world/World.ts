@@ -667,6 +667,7 @@ export class World {
     for (const w of this.waterfalls) (w.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
     this.farm?.update(dt, time, night);
     this.hamlet?.update(dt, night);
+    this.house?.update(time);
     // chimney smoke & campfires
     this.smokeTimer -= dt;
     if (this.smokeTimer <= 0) {

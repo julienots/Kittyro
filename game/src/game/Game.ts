@@ -398,7 +398,13 @@ export class Game implements GameApi {
     on('friend:reward', (p) => this.ui.toast(`${NPC_BY_ID[p.npc].name} vous offre : ${p.reward}`, '🎁', 'good'));
     on('festival:start', (p) => { this.ui.toast(`${p.name} commence au village !`, FESTIVAL_BY_ID[p.id]?.icon ?? '🎉', 'good'); this.musicT = 0; });
     on('rainbow', () => { this.ui.toast('Un arc-en-ciel ! Les créatures rares sortent...', '🌈', 'good'); this.ctx.state.flags.rainbowDay = this.ctx.state.time.day; });
-    on('lightning', () => { this.sky.flash = 1.2; setTimeout(() => audio.play('thunder'), 300 + Math.random() * 900); });
+    on('lightning', () => {
+      if (this.world.layout.indoor) { this.sky.flash = 0.5; setTimeout(() => audio.play('thunder'), 900); return; }
+      this.sky.flash = 1.4;
+      const d = this.weatherFx.strike(this.player.pos, this.renderer.camera, (x, z) => this.world.heightAt(x, z));
+      if (this.settings.haptics) audio.vibrate(30);
+      setTimeout(() => { audio.play('thunder'); if (d < 22) this.rig.shake(0.06, 0.4); }, Math.min(1800, d * 45));
+    });
     on('weather:changed', () => {
       this.musicT = 0;
       const w = this.ctx.state.weather.current;
@@ -464,6 +470,7 @@ export class Game implements GameApi {
     this.mineLadder = null;
     this.mineLadderPos = null;
     this.world.load(region, floor);
+    this.world.house?.setFirstPerson(this.rig.view === 'fp');
     st.player.region = region;
     if (region !== 'house' && region !== 'mine') this.lastSeason = seasonOfDay(st.time.day);
     if (region === 'house' || region === 'mine' || region === 'frosty') st.player.riding = region === 'frosty' ? st.player.riding : false;
@@ -1678,6 +1685,10 @@ export class Game implements GameApi {
     ]);
   }
 
+  rainbowOverlay(): number {
+    return this.weatherFx.rainbowIso && !this.title ? this.weatherFx.rainbowLevel : 0;
+  }
+
   // ------------------------------------------------------------ emotes
   emotes(): { id: string; icon: string; name: string }[] {
     return EMOTES;
@@ -1771,6 +1782,7 @@ export class Game implements GameApi {
       this.rig.fpPitch = -0.12;
     }
     this.rig.setView(fp ? 'fp' : 'iso');
+    this.world?.house?.setFirstPerson(fp);
     this.renderer.setTiltShift(fp ? 0 : 1);
     globalUniforms.uSeeThrough.value = fp ? 0 : 1;
     if (this.player) {
