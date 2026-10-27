@@ -85,6 +85,13 @@ const MIGRATIONS: Record<number, (s: any) => any> = {
     s.version = 3;
     return s;
   },
+  3: (s) => {
+    // v1.5 inserted the house-repair chapter after the first story quest
+    if (s.quests && s.quests.storyStep >= 1) s.quests.storyStep += 1;
+    s.flags = { ...(s.flags ?? {}), houseRuined: false };
+    s.version = 4;
+    return s;
+  },
 };
 
 /** Fill in any missing fields from a fresh game (forward-compatible, repairs partial saves). */

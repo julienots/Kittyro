@@ -42,4 +42,10 @@ export interface GameApi {
   adsPrivacy(): { required: boolean; show: () => void };
   toggleView(): void;
   readonly view: 'iso' | 'fp';
+  guideInfo(): import('../game/Guide').GuideInfo | null;
+  trackQuest(id: string | null): void;
+  groundY(x: number, z: number): number;
+  emotes(): { id: string; icon: string; name: string }[];
+  emote(id: string): void;
+  replayIntro(): void;
 }

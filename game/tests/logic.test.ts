@@ -111,6 +111,11 @@ describe('quests', () => {
     c.npcs.talk('moss');
     expect(c.quests.story?.done).toBe(true);
     expect(c.quests.claim('s0')).toBe(true);
+    expect(c.quests.story?.id).toBe('sh');
+    expect(c.state.flags.houseRuined).toBe(true);
+    c.progress('repair', 'house');
+    expect(c.quests.story?.done).toBe(true);
+    expect(c.quests.claim('sh')).toBe(true);
     expect(c.quests.story?.id).toBe('s1');
     for (let i = 0; i < 6; i++) {
       c.farming.till(10 + i, 30);
@@ -130,10 +135,10 @@ describe('quests', () => {
   });
   it('deliver quests consume items', () => {
     const c = fresh();
-    c.state.quests.storyStep = 9;
+    c.state.quests.storyStep = STORY.findIndex((q) => q.id === 's9');
     c.state.quests.active = [];
     c.quests.ensureStory();
-    expect(c.quests.story?.id).toBe(STORY[9].id);
+    expect(c.quests.story?.id).toBe('s9');
     c.inventory.add('plank', 30);
     expect(c.quests.deliver('s9')).toBe(true);
     expect(c.inventory.count('plank')).toBe(0);
@@ -258,6 +263,20 @@ describe('save system', () => {
     expect(s.player.coins).toBe(42);
     expect(s.weather.current).toBeDefined();
     expect(s.inventory.length).toBe(s.inventorySize);
+  });
+  it('v3 saves keep their story position after the house chapter was added', () => {
+    const c = fresh();
+    const raw = JSON.parse(JSON.stringify(c.state));
+    raw.version = 3;
+    raw.quests.storyStep = 3; // was on s3 (village)
+    delete raw.flags.houseRuined;
+    const s = migrate(raw);
+    expect(STORY[s.quests.storyStep].id).toBe('s3');
+    expect(s.flags.houseRuined).toBe(false);
+    const fresh0 = JSON.parse(JSON.stringify(c.state));
+    fresh0.version = 3;
+    fresh0.quests.storyStep = 0;
+    expect(migrate(fresh0).quests.storyStep).toBe(0);
   });
   it('export/import strings', () => {
     const c = fresh();

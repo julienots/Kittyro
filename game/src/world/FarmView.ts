@@ -67,7 +67,54 @@ export class FarmView {
     this.bin = new THREE.Mesh(structureGeo('shipping_bin'), propMat());
     this.bin.castShadow = true;
     this.group.add(this.bin);
+    this.group.add(this.buildSign());
     this.off = this.ctx.bus.on('plot:changed', this.onPlot);
+  }
+
+  /** Wooden sign with the farm's name by the front path. */
+  static readonly SIGN = { x: 12.6, z: 17.6 };
+  private buildSign(): THREE.Group {
+    const g = new THREE.Group();
+    const b = mb();
+    for (const sx of [-0.62, 0.62]) b.cyl(0.06, 0.07, 1.25, 0x7a5232, { pos: [sx, 0.62, 0] }, 7);
+    b.box(1.6, 0.62, 0.09, 0xb07a4a, { pos: [0, 1.05, 0] });
+    b.box(1.7, 0.08, 0.13, 0x8a5a3a, { pos: [0, 1.38, 0] });
+    b.box(1.7, 0.08, 0.13, 0x8a5a3a, { pos: [0, 0.72, 0] });
+    for (let i = 0; i < 5; i++) b.sphere(0.07, [0xff8ab8, 0xffd03a, 0xffffff, 0xb08ae8, 0xff6a5a][i], { pos: [-0.5 + i * 0.25, 0.08, 0.2], scale: [1, 0.7, 1] }, 5);
+    const wood = new THREE.Mesh(b.build(), vcMat());
+    wood.castShadow = true;
+    g.add(wood);
+    const cv = document.createElement('canvas');
+    cv.width = 512;
+    cv.height = 192;
+    const c = cv.getContext('2d')!;
+    c.fillStyle = '#c8945e';
+    c.fillRect(0, 0, 512, 192);
+    for (let i = 0; i < 14; i++) { c.fillStyle = `rgba(90,50,20,${0.05 + (i % 3) * 0.03})`; c.fillRect(0, i * 14 + (i % 2) * 4, 512, 3); }
+    const name = this.ctx.state.player.farmName || 'Ma ferme';
+    let fs = 78;
+    c.font = `600 ${fs}px Fredoka, sans-serif`;
+    while (c.measureText(name).width > 420 && fs > 30) { fs -= 4; c.font = `600 ${fs}px Fredoka, sans-serif`; }
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = 'rgba(60,30,10,.35)';
+    c.fillText(name, 258, 100);
+    c.fillStyle = '#fff6e0';
+    c.fillText(name, 256, 96);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.57), new THREE.MeshLambertMaterial({ map: tex }));
+    plate.position.set(0, 1.05, 0.051);
+    g.add(plate);
+    const back = plate.clone();
+    back.rotation.y = Math.PI;
+    back.position.z = -0.051;
+    g.add(back);
+    const p = FarmView.SIGN;
+    g.position.set(p.x, this.world.heightAt(p.x, p.z), p.z);
+    g.rotation.y = 0.35;
+    return g;
   }
 
   private onPlot = (e: { x: number; z: number; kind: string }) => {
@@ -154,7 +201,7 @@ export class FarmView {
       const cx = (fp.x0 + fp.x1) / 2, cz = (fp.z0 + fp.z1) / 2;
       const y = this.world.heightAt(cx, cz);
       if (bdef) {
-        const model = farmBuildingModel(p.kind, bdef.size[0], bdef.size[1], bdef.roof, bdef.wall);
+        const model = farmBuildingModel(p.kind, bdef.size[0], bdef.size[1], bdef.roof, bdef.wall, p.kind === 'house' && !!this.ctx.state.flags.houseRuined);
         // outer group sits on the footprint centre and carries the rotation; inner group = model space
         const outer = new THREE.Group();
         const g = new THREE.Group();
@@ -260,6 +307,7 @@ export class FarmView {
     }
     for (const t of st.farm.fruitTrees) arr[t.z * w + t.x] = 1;
     arr[FARM.shippingBin.z * w + FARM.shippingBin.x] = 1;
+    arr[Math.floor(FarmView.SIGN.z) * w + Math.floor(FarmView.SIGN.x)] = 1;
   }
 
   /** Door position of a placed building (for interactions). */

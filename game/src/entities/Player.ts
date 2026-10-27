@@ -7,8 +7,9 @@ import { buildAnimal, type AnimalRig } from '../models/Animals';
 import { angleLerp, clamp, damp } from '../core/MathUtil';
 import { TRAILS } from '../data/shop';
 import { ANIMAL_BY_ID } from '../data/animals';
+import { applyEmote } from './Emotes';
 
-export type PlayerAnim = 'idle' | 'walk' | 'tool' | 'fishCast' | 'fishWait' | 'fishReel' | 'happy' | 'pet' | 'sleep' | 'eat';
+export type PlayerAnim = 'idle' | 'walk' | 'tool' | 'fishCast' | 'fishWait' | 'fishReel' | 'happy' | 'pet' | 'sleep' | 'eat' | 'emote';
 
 /**
  * The player avatar: movement with collision, tap-to-move path following,
@@ -41,6 +42,7 @@ export class Player {
   lantern: THREE.PointLight | null = null;
   outline = true;
   frozen = false;
+  emoteId = '';
 
   constructor(private ctx: Ctx, private world: World, private particles: Particles) {
     this.rebuild();
@@ -157,7 +159,7 @@ export class Player {
     if (manual) {
       this.path = [];
       this.pathTarget = null;
-      if (this.anim === 'fishWait' || this.anim === 'happy') this.stopAction();
+      if (this.anim === 'fishWait' || this.anim === 'happy' || this.anim === 'emote') this.stopAction();
     }
     if (!manual && this.path.length && !this.busy) {
       const wp = this.path[0];
@@ -214,7 +216,7 @@ export class Player {
     st.player.z = this.pos.z;
     st.player.facing = this.facing;
     const moving = Math.hypot(this.vel.x, this.vel.z) > 0.3;
-    if (!this.busy && this.anim !== 'happy') this.anim = moving ? 'walk' : 'idle';
+    if (!this.busy && this.anim !== 'happy' && this.anim !== 'emote') this.anim = moving ? 'walk' : 'idle';
     this.animate(dt, moving);
     // footsteps & trail
     if (moving) {
@@ -260,6 +262,8 @@ export class Player {
       rig.body.position.y = damp(rig.body.position.y, 0, k, dt);
       rig.head.rotation.x = damp(rig.head.rotation.x, 0, k, dt);
       rig.head.rotation.z = damp(rig.head.rotation.z, 0, k, dt);
+      rig.body.rotation.y = damp(rig.body.rotation.y, 0, k, dt);
+      rig.head.rotation.y = damp(rig.head.rotation.y, 0, k, dt);
     };
     switch (this.anim) {
       case 'walk': {
@@ -375,8 +379,22 @@ export class Player {
       case 'sleep':
         rig.body.rotation.x = clamp(rig.body.rotation.x - dt * 2, -1.4, 0);
         break;
+      case 'emote':
+        if (!applyEmote(rig, this.emoteId, this.animT)) { this.anim = 'idle'; this.emoteId = ''; }
+        break;
     }
     if (this.horse && !moving && this.anim === 'idle') this.horse.body.position.y = damp(this.horse.body.position.y, 0, 8, dt);
+  }
+
+  /** Play an emote (interrupted by walking). */
+  emote(id: string): void {
+    if (this.busy) return;
+    this.path = [];
+    this.pathTarget = null;
+    this.showTool(null);
+    this.anim = 'emote';
+    this.emoteId = id;
+    this.animT = 0;
   }
 
   celebrate(): void {

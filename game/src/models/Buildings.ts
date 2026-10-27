@@ -119,7 +119,7 @@ function fenceRow(b: ModelBuilder, x0: number, z0: number, x1: number, z1: numbe
   b.box(0.05, 0.06, len, color, { pos: [(x0 + x1) / 2, 0.18, (z0 + z1) / 2], rot: [0, ang, 0] });
 }
 
-export function farmBuildingModel(kind: string, w: number, d: number, roof: number, wall: number): BuildingModel {
+export function farmBuildingModel(kind: string, w: number, d: number, roof: number, wall: number, ruined = false): BuildingModel {
   const b = mb(), win = mb();
   const cx = w / 2, cz = d / 2;
   let smoke: THREE.Vector3[] = [];
@@ -129,9 +129,22 @@ export function farmBuildingModel(kind: string, w: number, d: number, roof: numb
   const lights: THREE.Vector3[] = [];
   switch (kind) {
     case 'house': {
-      const r = house(b, win, cx, cz - 0.2, { w: w - 0.6, d: d - 1.2, h: 1.7, wall, roof, chimney: true, windows: 3, door: 0.3, timber: true, mat: TEX.plaster });
+      const r = house(b, win, cx, cz - 0.2, { w: w - 0.6, d: d - 1.2, h: 1.7, wall, roof, chimney: true, windows: 3, door: 0.3, timber: true, mat: TEX.plaster, ruined });
       smoke = r.smoke;
       door = r.door;
+      if (ruined) {
+        // abandoned look: tarp over the roof hole, scaffolding, a pile of old planks
+        b.box(1.5, 0.04, 1.3, 0x5a8ab8, { pos: [cx + 0.7, 0.25 + 1.7 + 0.55, cz - 0.3], rot: [0.5, 0, 0.15] });
+        for (const sx of [-1.9, -1.1]) for (const sz of [d / 2 - 0.1, d / 2 + 0.3]) b.box(0.07, 2.1, 0.07, WOOD, { pos: [cx + sx, 1.05, sz] });
+        b.box(1.0, 0.06, 0.5, darker(WOOD, 0.85), { pos: [cx - 1.5, 1.2, d / 2 + 0.1], tex: TEX.plank });
+        b.box(1.0, 0.06, 0.5, darker(WOOD, 0.85), { pos: [cx - 1.5, 2.0, d / 2 + 0.1], tex: TEX.plank });
+        for (let i = 0; i < 5; i++) b.box(1.1, 0.07, 0.18, darker(WOOD, 0.75 + (i % 2) * 0.1), { pos: [w - 0.6, 0.06 + i * 0.07, d - 0.5 + (i % 2) * 0.05], rot: [0, 0.2 * (i % 3), 0], tex: TEX.plank });
+        b.box(0.9, 0.06, 0.08, 0x5a4a3a, { pos: [cx - 0.75, 0.25 + 1.0, d / 2 - 0.05], rot: [0, 0, 0.5] }); // boarded window
+        b.box(0.9, 0.06, 0.08, 0x5a4a3a, { pos: [cx - 0.75, 0.25 + 1.0, d / 2 - 0.05], rot: [0, 0, -0.5] });
+        // weeds around the walls
+        for (let i = 0; i < 8; i++) b.cone(0.09, 0.35, 0x6a9a3a, { pos: [cx - w / 2 + 0.6 + i * 0.5, 0.15, d - 0.75 + (i % 2) * 0.1], rot: [0.2 * (i % 3 - 1), 0, 0.2] }, 5);
+        break;
+      }
       // porch
       b.box(1.8, 0.08, 0.9, 0xc8925a, { pos: [cx + 0.3, 0.3, d - 0.65] });
       for (const sx of [-0.8, 0.8]) b.cyl(0.05, 0.05, 1.3, 0xfff4e0, { pos: [cx + 0.3 + sx, 0.95, d - 0.3] }, 6);

@@ -14,6 +14,12 @@ export interface Settings {
   leftHanded: boolean;
   tips: boolean;
   view: 'iso' | 'fp';
+  /** quest tracker on screen */
+  tracker: boolean;
+  /** golden arrow towards the objective */
+  guideArrow: boolean;
+  /** play the intro cut-scene for new games */
+  intro: boolean;
 }
 
 const KEY = 'mm_settings';
@@ -30,7 +36,7 @@ export function detectQuality(): Quality {
 }
 
 export function defaultSettings(): Settings {
-  return { quality: detectQuality(), controls: 'both', music: 0.6, sfx: 0.8, ambience: 0.6, zoom: 1, showFps: false, haptics: true, autoQuality: true, leftHanded: false, tips: true, view: 'iso' };
+  return { quality: detectQuality(), controls: 'both', music: 0.6, sfx: 0.8, ambience: 0.6, zoom: 1, showFps: false, haptics: true, autoQuality: true, leftHanded: false, tips: true, view: 'iso', tracker: true, guideArrow: true, intro: true };
 }
 
 export function loadSettings(): Settings {

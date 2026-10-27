@@ -9,7 +9,7 @@ import { NPCS, NPC_BY_ID, type NpcDef } from '../data/npcs';
 import { ANIMAL_BY_ID, ANIMALS } from '../data/animals';
 import { CREATURE_BY_ID } from '../data/creatures';
 import { INSECT_BY_ID, type InsectDef } from '../data/insects';
-import { emojiSprite } from '../render/EmojiSprite';
+import { emojiSprite, questMarker } from '../render/EmojiSprite';
 import { item } from '../data/items';
 import { angleLerp, damp } from '../core/MathUtil';
 import { Random, rng } from '../core/Random';
@@ -63,6 +63,8 @@ export class NpcAgent extends Mover {
   currentAnchor = '';
   talking = 0;
   bubble: THREE.Sprite | null = null;
+  marker: THREE.Sprite | null = null;
+  markerCh = '';
 
   constructor(world: World, def: NpcDef, outline: boolean) {
     super(world);
@@ -109,7 +111,12 @@ export class NpcAgent extends Mover {
       rig.head.rotation.z = Math.sin(this.idleT * 0.8) * 0.06;
     }
     if (this.bubble) this.bubble.position.set(this.pos.x, this.pos.y + 1.85 * this.def.scale + Math.sin(this.idleT * 3) * 0.05, this.pos.z);
+    if (this.marker) {
+      this.markT += dt;
+      this.marker.position.set(this.pos.x, this.pos.y + 2.05 * this.def.scale + Math.abs(Math.sin(this.markT * 3)) * 0.15, this.pos.z);
+    }
   }
+  private markT = 0;
 }
 
 // ---------------------------------------------------------------- Farm animal
@@ -520,7 +527,7 @@ export class EntityManager {
 
   clear(): void {
     for (const a of this.animals) a.dispose();
-    for (const n of this.npcs) n.bubble?.removeFromParent();
+    for (const n of this.npcs) { n.bubble?.removeFromParent(); n.marker?.removeFromParent(); }
     for (const n of this.villagers) n.bubble?.removeFromParent();
     this.group.clear();
     this.npcs = [];
@@ -596,6 +603,7 @@ export class EntityManager {
         // walk off toward the edge then vanish
         if (!n.path.length) {
           n.rig.root.removeFromParent();
+          n.marker?.removeFromParent();
           this.npcs = this.npcs.filter((x) => x !== n);
         }
         continue;
@@ -851,7 +859,7 @@ export class EntityManager {
   /** Entities you can interact with near the player. */
   interactables(): Interactable[] {
     const out: Interactable[] = [];
-    for (const n of this.npcs) out.push({ id: `npc:${n.def.id}`, kind: 'npc', x: n.pos.x, z: n.pos.z, radius: 1.6, label: n.def.name, icon: '💬', data: { npc: n.def.id } });
+    for (const n of this.npcs) out.push({ id: `npc:${n.def.id}`, kind: 'npc', x: n.pos.x, z: n.pos.z, radius: 2.0, label: n.def.name, icon: '💬', data: { npc: n.def.id } });
     for (const v of this.villagers) {
       if (v.inside) continue;
       if (v.data) out.push({ id: `villager:${v.data.uid}`, kind: 'villager', x: v.pos.x, z: v.pos.z, radius: 1.5, label: v.data.name, icon: v.data.wish ? '💭' : '💬', data: { uid: v.data.uid } });
@@ -867,6 +875,23 @@ export class EntityManager {
       if (w.kind === 'wildanimal' && w.mode !== 'flee') out.push({ id: `wa:${w.id}`, kind: 'wildanimal', x: w.pos.x, z: w.pos.z, radius: 2.0, label: `Amadouer : ${ANIMAL_BY_ID[w.id].name}`, icon: ANIMAL_BY_ID[w.id].icon, data: { agent: w } });
     }
     return out;
+  }
+
+  /** Show "!" / "?" over NPCs that have something for you (set by the game). */
+  markerFor: ((npcId: string) => string) | null = null;
+  private markerT = 0;
+  updateMarkers(dt: number): void {
+    this.markerT -= dt;
+    if (this.markerT > 0) return;
+    this.markerT = 0.4;
+    for (const n of this.npcs) {
+      const want = this.markerFor?.(n.def.id) ?? '';
+      if (want === n.markerCh) continue;
+      n.marker?.removeFromParent();
+      n.marker = want ? questMarker(want) : null;
+      n.markerCh = want;
+      if (n.marker) this.group.add(n.marker);
+    }
   }
 
   npc(id: string): NpcAgent | undefined {

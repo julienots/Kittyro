@@ -112,6 +112,7 @@ function quests(ui: UI): void {
       h('div.row', { style: { marginTop: '8px' } },
         q.done && !q.claimed ? h('button.btn.small', { onclick: () => { g.ctx.quests.claim(q.id); g.audio.play('quest'); ui.setPanelBody(...render()); } }, '🎁 Réclamer') : null,
         g.ctx.quests.canDeliver(q) ? h('button.btn.small.peach', { onclick: () => { g.ctx.quests.deliver(q.id); g.audio.play('coin'); ui.setPanelBody(...render()); } }, '📦 Livrer') : null,
+        !q.done ? (g.guideInfo()?.quest === q ? h('span.chip.on', null, '📍 Suivie') : h('button.btn.small.ghost', { onclick: () => { g.trackQuest(q.id); g.audio.play('click'); ui.closePanel(); ui.toast(`Quête suivie : ${q.title}`, '📍'); } }, '📍 Suivre')) : null,
       ),
     )))];
   };
@@ -814,7 +815,7 @@ function settings(ui: UI): void {
   };
   const help = (t: string) => h('div.opt-help', null, t);
   const chips = <T extends string>(list: [T, string][], cur: T, on: (v: T) => void) => h('div.row', { style: { flexWrap: 'wrap' } }, ...list.map(([v, l]) => h(`button.chip${v === cur ? '.on' : ''}`, { onclick: () => on(v) }, l)));
-  const toggle = (k: 'leftHanded' | 'haptics' | 'autoQuality' | 'showFps' | 'tips', label: string, text: string) => h('div', null,
+  const toggle = (k: 'leftHanded' | 'haptics' | 'autoQuality' | 'showFps' | 'tips' | 'tracker' | 'guideArrow' | 'intro', label: string, text: string) => h('div', null,
     h('div.row', null, h(`button.chip${s[k] ? '.on' : ''}`, { onclick: () => set(k, !s[k]) }, `${s[k] ? '✓' : '○'} ${label}`), h('span.muted', null, s[k] ? 'Activé' : 'Désactivé')),
     help(text));
   const slider = (k: 'music' | 'sfx' | 'ambience', label: string, text: string) => {
@@ -843,6 +844,25 @@ function settings(ui: UI): void {
     toggle('haptics', '📳 Vibrations', 'Petite vibration quand vous coupez, minez ou récoltez (si votre téléphone le permet).'),
     toggle('tips', '💡 Astuces', 'Affiche des conseils la première fois que vous découvrez une fonctionnalité (hameau, construction, nuit…).'),
     s.tips ? null : h('button.btn.small.ghost', { onclick: () => { st.flags.tips = []; ui.toast('Les astuces réapparaîtront', '💡'); } }, '↺ Revoir toutes les astuces'),
+    h('h3', null, '🧭 Guidage'),
+    toggle('tracker', '📌 Suivi de quête', 'Le cadre en haut à gauche : la quête suivie, ses étapes et une phrase « quoi faire maintenant ». Touchez une autre quête de la liste pour la suivre à la place.'),
+    toggle('guideArrow', '➡️ Flèche jaune', 'Une flèche dorée flotte au-dessus de l\'objectif (personnage, arbre, bâtiment…) et une flèche au bord de l\'écran indique la direction et la distance.'),
+    toggle('intro', '🎬 Cinématique d\'introduction', 'Joue la petite scène d\'histoire au début d\'une nouvelle partie.'),
+    h('div.row', { style: { flexWrap: 'wrap' } }, h('button.btn.small.ghost', { onclick: () => { ui.closePanel(); g.replayIntro(); } }, '🎬 Revoir l\'introduction')),
+    h('details.howto', null, h('summary', null, '🔎 Que veulent dire les boutons ?'), h('ul', null,
+      ...([
+        ['🎒 Sac', 'vos objets, graines, nourriture ; la remise et les décorations rangées.'],
+        ['📜 Quêtes', 'toutes les quêtes : histoire ⭐, quotidiennes, demandes des habitants. Le chiffre rouge = récompenses à récupérer.'],
+        ['🔨 Bâtir', 'construire des bâtiments, poser des décorations et déplacer ce qui existe.'],
+        ['🗺️ Carte', 'la vallée et ses régions ; touchez une région pour y voyager.'],
+        ['👁️ Vue', 'passe en vue à la 1ʳᵉ personne ou en vue d\'ensemble.'],
+        ['😊 Émotes', 'faire coucou, danser, rire… (visible par vos amis en mode local).'],
+        ['📖 Album', 'collections : créatures, poissons, insectes, plantes…'],
+        ['⚙️ Menu', 'ces réglages, la garde-robe, le guide, la sauvegarde.'],
+        ['Gros bouton rond', 'l\'action du moment : parler, récolter, couper, entrer…'],
+        ['Bouton outil', 'utilise l\'outil en main ; appui long = roue des objets et outils.'],
+        ['🌱', 'choisir la graine à planter.'],
+      ] as [string, string][]).map(([a, b]) => h('li', null, h('b', null, a), ` : ${b}`)))),
     h('h3', null, '📷 Caméra'),
     h('div.row', { style: { flexWrap: 'wrap' } },
       h(`button.chip${g.view === 'iso' ? '.on' : ''}`, { onclick: () => { if (g.view !== 'iso') g.toggleView(); settings(ui); } }, '🏡 Vue d\'ensemble'),
@@ -880,7 +900,7 @@ function settings(ui: UI): void {
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
     help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.4.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.5.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
 }
 

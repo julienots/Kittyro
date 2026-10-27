@@ -109,7 +109,7 @@ export function createNewGame(name = 'Sacha', farmName = 'Ferme Moussue', look: 
     festivals: { attended: {}, tokens: 0, best: {} },
     mine: { deepest: 0, floor: 0, seed: (seed * 7) >>> 0 },
     stats: {},
-    flags: { theme: 'classic', trail: 'none', themesOwned: ['classic'], trailsOwned: ['none'] },
+    flags: { theme: 'classic', trail: 'none', themesOwned: ['classic'], trailsOwned: ['none'], houseRuined: true },
     log: [],
   };
 
