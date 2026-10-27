@@ -88,11 +88,24 @@ export class GatheringSystem {
     return r.pick(list);
   }
 
+  /** Debris that a construction may sweep away (weeds, small rocks, stumps, young trees of the clearing). */
+  isDebris(n: NodeRef): boolean {
+    return !!n.once && n.kind !== 'boulder' && n.kind !== 'chest' && this.available(n);
+  }
+
+  /** Clear a debris node instantly (building placed on top of it): drops go to the bag. */
+  clear(n: NodeRef): HitResult {
+    if (!this.isDebris(n)) return { ok: false, done: false, drops: [] };
+    this.ns(n).hp = 1;
+    return this.hit(n, this.kind(n).tool, true);
+  }
+
   /** Apply one tool hit (or hand pick). */
-  hit(n: NodeRef, usingTool: string): HitResult {
+  hit(n: NodeRef, usingTool: string, force = false): HitResult {
     const k = this.kind(n);
     if (!k) return { ok: false, done: false, drops: [] };
     if (!this.available(n)) return { ok: false, done: false, drops: [], reason: 'Ça repousse...' };
+    if (force) return this.finish(n, k);
     if (k.tool !== 'hand' && k.tool !== usingTool) return { ok: false, done: false, drops: [], reason: `Il faut ${({ axe: 'la hache', pickaxe: 'la pioche', sickle: 'la faucille' } as any)[k.tool]}.` };
     const tier = k.tool === 'hand' ? 99 : this.ctx.toolTier(k.tool as any);
     if (tier < k.minTier) return { ok: false, done: false, drops: [], reason: `Outil trop faible (niveau ${['Bois', 'Cuivre', 'Fer', 'Acier', 'Cristal'][k.minTier]} requis).` };
@@ -102,6 +115,11 @@ export class GatheringSystem {
       s.hp = hp;
       return { ok: true, done: false, drops: [] };
     }
+    return this.finish(n, k);
+  }
+
+  private finish(n: NodeRef, k: NodeKind): HitResult {
+    const s = this.ns(n);
     // depleted -> drops
     s.hp = undefined;
     s.depletedAt = this.ctx.state.absMinute;

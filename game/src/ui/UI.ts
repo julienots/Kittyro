@@ -80,7 +80,7 @@ export class UI {
     this.coinsEl = h('span', null, '0');
     this.gemsEl = h('span', null, '0');
     this.badgeQuests = h('span.badge.hidden', null, '!');
-    const btn = (icon: string, title: string, fn: () => void, extra?: HTMLElement) => h('button.icon-btn', { title, onclick: (e: Event) => { e.stopPropagation(); g.audio.play('click'); fn(); } }, icon, extra);
+    const btn = (icon: string, title: string, fn: () => void, extra?: HTMLElement, cls = '') => h(`button.icon-btn.labeled${cls}`, { title, onclick: (e: Event) => { e.stopPropagation(); g.audio.play('click'); fn(); } }, h('span.ic', null, icon), h('small', null, title), extra);
     this.actBtn = <HTMLButtonElement>h('button.act-btn.idle', null, h('span.ic', null, '✋'), h('span.lbl', null, ''));
     const press = (el: HTMLElement, fn: () => void) => {
       el.addEventListener('pointerdown', (e) => {
@@ -121,16 +121,21 @@ export class UI {
       h('div.hud-top-right', null,
         h('div.money', null, h('div.pill', { onclick: () => this.openPanel('pass') }, '🪙', this.coinsEl), h('div.pill', { onclick: () => this.openPanel('shop', 'boutique') }, '💎', this.gemsEl)),
         h('div.menu-row', null,
-          btn('🎒', 'Sac', () => this.openPanel('inventory')),
-          btn('📜', 'Quêtes', () => this.openPanel('quests'), this.badgeQuests),
-          btn('🔨', 'Construire', () => this.openPanel('build')),
-          btn('🗺️', 'Carte', () => this.openPanel('map')),
-          btn('📖', 'Collections', () => this.openPanel('collections')),
-          btn('⚙️', 'Menu', () => this.openPanel('settings')),
+          btn('🎒', 'Sac', () => this.openPanel('inventory'), undefined, '.hb-bag'),
+          btn('📜', 'Quêtes', () => this.openPanel('quests'), this.badgeQuests, '.hb-quests'),
+          btn('🔨', 'Bâtir', () => this.openPanel('build'), undefined, '.hb-build'),
+          btn('🗺️', 'Carte', () => this.openPanel('map'), undefined, '.hb-map'),
+          h('button.icon-btn.labeled.view-btn', { title: 'Vue 1ʳᵉ personne / vue d\'ensemble (V)', onclick: (e: Event) => { e.stopPropagation(); g.toggleView(); } }, h('span.ic', null, '👁️'), h('small', null, 'Vue')),
+          btn('😊', 'Émotes', () => this.toggleEmoteWheel(), undefined, '.hb-emote'),
+          btn('📖', 'Album', () => this.openPanel('collections'), undefined, '.hb-album'),
+          btn('⚙️', 'Menu', () => this.openPanel('settings'), undefined, '.hb-menu'),
         ),
       ),
       h('div.hud-actions', null, this.actBtn, this.toolBtn, this.seedBtn, this.rideBtn, this.waterMeter),
+      h('div.fp-vignette'),
+      h('div.crosshair'),
       this.joyHint,
+      this.chatDock,
     );
     // pointer events on interactive children only
     for (const el of this.hud.querySelectorAll('button, .card, .pill')) (el as HTMLElement).style.pointerEvents = 'auto';
@@ -160,20 +165,14 @@ export class UI {
       h('div', null,
         h('div.big', null, formatClock(st.time.minute)),
         h('div.sub', null, `${SEASON_ICONS[season]} ${SEASON_NAMES[season]} ${dayOfSeason(st.time.day)} · An ${yearOfDay(st.time.day)}`),
+        h('div.sub.farmname', null, `🏡 ${st.player.farmName}`),
         fest ? h('div.sub', { style: { color: '#e06a8a', fontWeight: '600' } }, `${fest.icon} ${fest.name}`) : null,
       ),
       h('div', { style: { marginLeft: '4px', textAlign: 'center' } }, h('div', { style: { fontSize: '13px', fontWeight: '600' } }, `Nv ${st.player.level}`), h('div.progress', { style: { width: '46px', height: '6px' } }, h('i', { style: { width: `${(st.player.xp / xpForLevel(st.player.level)) * 100}%` } }))),
     );
     this.coinsEl.textContent = fmt(st.player.coins);
     this.gemsEl.textContent = fmt(st.player.gems);
-    // quest tracker: story first, else first unfinished quest
-    const q = this.g.ctx.quests.active.find((a) => a.kind === 'story' && !a.claimed) ?? this.g.ctx.quests.active.find((a) => !a.done);
-    if (q) {
-      const o = q.objectives.find((x) => x.progress < x.count) ?? q.objectives[0];
-      const pct = Math.min(100, (o.progress / o.count) * 100);
-      this.trackerEl.replaceChildren(h('b', null, `${q.kind === 'story' ? '⭐ ' : ''}${q.title}`), q.done ? h('span', { style: { color: '#4fb886', fontWeight: '600' } }, '✓ Terminé ! Touchez pour réclamer') : h('span', null, `${objectiveText(o)} — ${o.progress}/${o.count}`), h('div.bar', null, h('i', { style: { width: `${q.done ? 100 : pct}%` } })));
-      this.trackerEl.classList.remove('hidden');
-    } else this.trackerEl.classList.add('hidden');
+    this.renderTracker();
     const claim = this.g.ctx.quests.claimableCount();
     this.badgeQuests.textContent = String(claim);
     this.badgeQuests.classList.toggle('hidden', claim === 0);
@@ -184,7 +183,8 @@ export class UI {
     const tool = st.player.activeTool;
     const td = TOOL_BY_ID[tool];
     (this.toolBtn.querySelector('.ic') as HTMLElement).textContent = td.icon;
-    (this.toolBtn.querySelector('.tier') as HTMLElement).textContent = TOOL_TIERS[st.player.tools[tool]];
+    (this.toolBtn.querySelector('.tier') as HTMLElement).textContent = td.name;
+    this.toolBtn.title = `${td.name} (${TOOL_TIERS[st.player.tools[tool]]}) — appui long : changer d'outil`;
     const seeds = this.g.ctx.inventory.seeds();
     const sel = st.player.selectedSeed;
     const selQty = sel ? this.g.ctx.inventory.count(sel) : 0;
@@ -200,29 +200,136 @@ export class UI {
     void force;
   }
 
+  /** Quest tracker (top-left): the followed quest with a plain "what now" hint, plus the other active quests. */
+  private trackerKey = '';
+  renderTracker(): void {
+    const g = this.g;
+    const info = g.guideInfo();
+    const q = info?.quest;
+    if (!q || g.settings.tracker === false) {
+      this.trackerEl.classList.add('hidden');
+      this.trackerKey = '';
+      return;
+    }
+    const others = g.ctx.quests.active.filter((a) => a !== q && !a.claimed).sort((a, b) => (b.done ? 1 : 0) - (a.done ? 1 : 0)).slice(0, 2);
+    const o = info!.objective;
+    const dist = info!.target && info!.distance > 2 ? ` · ${Math.round(info!.distance)} m` : '';
+    const key = [q.id, q.done, ...q.objectives.map((x) => x.progress), info!.hint, info!.targetLabel, dist, ...others.map((a) => `${a.id}${a.done}${a.objectives[0]?.progress}`)].join('|');
+    this.trackerEl.classList.remove('hidden');
+    if (key === this.trackerKey) return;
+    this.trackerKey = key;
+    const objs = q.objectives.map((x) => h(`div.tobj${x.progress >= x.count ? '.ok' : ''}${x === o ? '.cur' : ''}`, null, h('span', null, x.progress >= x.count ? '✅' : x === o ? '▶' : '◻️'), h('span.t', null, objectiveText(x)), x.count > 1 ? h('span.n', null, `${Math.min(x.progress, x.count)}/${x.count}`) : null));
+    this.trackerEl.replaceChildren(
+      h('div.thead', null, h('b', null, `${q.kind === 'story' ? '⭐ ' : '📌 '}${q.title}`), h('span.tmore', null, '📜')),
+      ...objs,
+      h(`div.thint${q.done ? '.done' : ''}`, null, h('span', null, q.done ? '🎁' : '👉'), h('span', null, info!.hint)),
+      ...(info!.target && info!.targetLabel ? [h('div.tgo', null, `📍 ${info!.targetLabel}${dist}`)] : []),
+      ...others.map((a) => h('div.tother', { onclick: (e: Event) => { e.stopPropagation(); g.trackQuest(a.id); this.trackerKey = ''; this.renderTracker(); g.audio.play('click'); } }, h('span', null, a.done ? '🎁' : '📌'), h('span.t', null, a.title), h('span.n', null, a.done ? 'Prêt !' : `${Math.min(a.objectives[0].progress, a.objectives[0].count)}/${a.objectives[0].count}`))),
+    );
+  }
+
+  private edgeArrow: HTMLElement | null = null;
+  private highlighted: HTMLElement | null = null;
+  /** Arrow at the screen edge pointing to an off-screen objective + pulse on the HUD button to press. */
+  private updateGuideOverlay(): void {
+    const info = this.g.guideInfo();
+    const hidden = !this.hud || this.hud.style.display === 'none' || this.modalOpen || !!this.dialogueEl;
+    // HUD highlight
+    const want = !hidden && info?.highlight ? this.root.querySelector(info.highlight) as HTMLElement | null : null;
+    if (want !== this.highlighted) {
+      this.highlighted?.classList.remove('guide-pulse');
+      want?.classList.add('guide-pulse');
+      this.highlighted = want;
+    }
+    if (!this.edgeArrow) {
+      this.edgeArrow = h('div.guide-edge', null, h('i'), h('span'));
+      this.root.appendChild(this.edgeArrow);
+    }
+    const el = this.edgeArrow;
+    if (hidden || !info?.target || info.distance < 2 || !this.g.settings.guideArrow) { el.style.display = 'none'; return; }
+    const cam = this.g.camera as THREE.PerspectiveCamera;
+    const v = new THREE.Vector3(info.target.x, this.g.groundY(info.target.x, info.target.z) + 1.2, info.target.z);
+    const local = v.clone().applyMatrix4(cam.matrixWorldInverse);
+    const behind = local.z > 0;
+    v.project(cam);
+    let x = v.x, y = v.y;
+    if (behind) { x = -x; y = -y; }
+    const inside = !behind && Math.abs(x) < 0.9 && Math.abs(y) < 0.85;
+    if (inside) { el.style.display = 'none'; return; }
+    const ang = Math.atan2(y, x);
+    const m = Math.max(Math.abs(Math.cos(ang)) / 0.86, Math.abs(Math.sin(ang)) / 0.74);
+    const ex = Math.cos(ang) / m, ey = Math.sin(ang) / m;
+    el.style.display = 'flex';
+    el.style.left = `${(ex * 0.5 + 0.5) * window.innerWidth}px`;
+    el.style.top = `${(-ey * 0.5 + 0.5) * window.innerHeight}px`;
+    (el.firstChild as HTMLElement).style.transform = `rotate(${-ang}rad)`;
+    (el.lastChild as HTMLElement).textContent = `${Math.round(info.distance)} m`;
+  }
+
+  // ------------------------------------------------------------ emotes
+  private emoteEl: HTMLElement | null = null;
+  toggleEmoteWheel(open = !this.emoteEl): void {
+    this.emoteEl?.remove();
+    this.emoteEl = null;
+    if (!open) return;
+    this.toggleToolWheel(false);
+    const list = this.g.emotes();
+    const R = Math.min(140, window.innerHeight * 0.34);
+    const n = list.length;
+    this.emoteEl = h('div.emote-wheel', { onpointerdown: (e: Event) => { e.stopPropagation(); if (e.target === this.emoteEl) this.toggleEmoteWheel(false); } },
+      h('div.ew-center', null, '😊'),
+      ...list.map((em, i) => {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+        return h('button.ew-item', { style: { left: `calc(50% + ${Math.cos(a) * R}px)`, top: `calc(50% + ${Math.sin(a) * R}px)` }, onclick: (e: Event) => { e.stopPropagation(); this.toggleEmoteWheel(false); this.g.emote(em.id); } }, h('span', null, em.icon), h('small', null, em.name));
+      }),
+    );
+    this.root.appendChild(this.emoteEl);
+  }
+
   setAction(a: ActionInfo): void {
     (this.actBtn.querySelector('.ic') as HTMLElement).textContent = a.icon;
     (this.actBtn.querySelector('.lbl') as HTMLElement).textContent = a.label;
     this.actBtn.classList.toggle('idle', !a.enabled);
   }
 
+  /** Item wheel: tools on the inner ring, seeds & food on the outer ring. */
   toggleToolWheel(open: boolean): void {
     this.wheel?.remove();
     this.wheel = null;
     if (!open) return;
-    const st = this.g.ctx.state;
+    this.emoteEl?.remove();
+    this.emoteEl = null;
+    const g = this.g;
+    const st = g.ctx.state;
     const tools: ToolId[] = ['hoe', 'can', 'sickle', 'axe', 'pickaxe', 'rod'];
-    this.wheel = h('div.card.tool-wheel', null, ...tools.map((t) => h(`button${st.player.activeTool === t ? '.on' : ''}`, {
-      onclick: (e: Event) => {
-        e.stopPropagation();
-        this.g.selectTool(t);
-        this.toggleToolWheel(false);
-      },
-    }, TOOL_BY_ID[t].icon, h('small', null, TOOL_BY_ID[t].name))));
+    const seeds = g.ctx.inventory.seeds();
+    const food = st.inventory.filter((s): s is { id: string; qty: number } => !!s && item(s.id).cat === 'dish').slice(0, 4);
+    const outer: { icon: string; label: string; qty?: number; on: boolean; fn: () => void }[] = [
+      ...seeds.slice(0, 8 - Math.min(food.length, 3)).map((sd) => ({ icon: item(sd.id.replace('seed_', '')).icon ?? '🌱', label: item(sd.id).name, qty: sd.qty, on: st.player.selectedSeed === sd.id, fn: () => { g.selectSeed(sd.id); this.toast(`Graine : ${item(sd.id).name}`, '🌱'); } })),
+      ...food.slice(0, 3).map((f) => ({ icon: item(f.id).icon, label: `Manger ${item(f.id).name}`, qty: f.qty, on: false, fn: () => g.eat(f.id) })),
+    ];
+    const center = h('div.iw-center', null, h('span', null, TOOL_BY_ID[st.player.activeTool].icon), h('small', null, TOOL_BY_ID[st.player.activeTool].name));
+    const R1 = Math.min(98, window.innerHeight * 0.24), R2 = Math.min(168, window.innerHeight * 0.42);
+    const place = (i: number, n: number, r: number, off = 0) => { const a = (i / n) * Math.PI * 2 - Math.PI / 2 + off; return { left: `calc(50% + ${Math.cos(a) * r}px)`, top: `calc(50% + ${Math.sin(a) * r}px)` }; };
+    const hover = (label: string, icon: string) => { center.replaceChildren(h('span', null, icon), h('small', null, label)); };
+    this.wheel = h('div.item-wheel', { onpointerdown: (e: Event) => { e.stopPropagation(); if (e.target === this.wheel) this.toggleToolWheel(false); } },
+      h('div.iw-ring'), center,
+      ...tools.map((t, i) => h(`button.iw-btn.tool${st.player.activeTool === t ? '.on' : ''}`, { style: place(i, tools.length, R1), onpointerenter: () => hover(TOOL_BY_ID[t].name, TOOL_BY_ID[t].icon), onclick: (e: Event) => { e.stopPropagation(); g.selectTool(t); this.toggleToolWheel(false); } }, TOOL_BY_ID[t].icon, h('small', null, TOOL_BY_ID[t].name))),
+      ...outer.map((o, i) => h(`button.iw-btn.item${o.on ? '.on' : ''}`, { style: place(i, Math.max(outer.length, 8), R2, Math.PI / 8), onpointerenter: () => hover(o.label, o.icon), onclick: (e: Event) => { e.stopPropagation(); o.fn(); this.toggleToolWheel(false); } }, o.icon, o.qty ? h('b', null, String(o.qty)) : null)),
+      outer.length ? null : h('div.iw-note', null, 'Vos graines et plats apparaîtront ici'),
+    );
     this.root.appendChild(this.wheel);
   }
 
+  private rainbowEl: HTMLElement | null = null;
   update(dt: number): void {
+    this.updateGuideOverlay();
+    const rb = this.g.rainbowOverlay();
+    if (rb > 0.01 && !this.rainbowEl) { this.rainbowEl = h('div.rainbow-overlay'); this.root.prepend(this.rainbowEl); }
+    if (this.rainbowEl) {
+      this.rainbowEl.style.opacity = String(Math.min(1, rb) * 0.85);
+      if (rb <= 0.01) { this.rainbowEl.remove(); this.rainbowEl = null; }
+    }
     this.hudT -= dt;
     if (this.hudT <= 0 && this.hud) {
       this.hudT = 0.25;
@@ -281,6 +388,69 @@ export class UI {
     this.faderEl.classList.remove('on');
   }
 
+  /**
+   * Cross-fade: the last frame stays on screen while the next region loads, then
+   * dissolves into the new view (no blank screen between places).
+   */
+  async crossfade(snap: HTMLCanvasElement | null, fn: () => void | Promise<void>, label = ''): Promise<void> {
+    if (!snap) return this.fade(fn, label);
+    snap.className = 'xfade';
+    const tag = label ? h('div.xfade-label', null, label) : null;
+    this.root.append(snap, ...(tag ? [tag] : []));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await fn();
+    // let the new scene draw (and compile) a few frames under the picture
+    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    snap.classList.add('out');
+    tag?.classList.add('show');
+    setTimeout(() => snap.remove(), 900);
+    if (tag) setTimeout(() => tag.classList.remove('show'), 1700);
+    if (tag) setTimeout(() => tag.remove(), 2400);
+  }
+
+  // ------------------------------------------------------------ local multiplayer chat
+  private chatLog = h('div.chat-log');
+  private chatDock = h('div.chat-dock.hidden', null, this.chatLog,
+    h('button.icon-btn.labeled.chat-btn', { onclick: (e: Event) => { e.stopPropagation(); this.openChat(); } }, h('span.ic', null, '💬'), h('small', null, 'Chat')));
+  private chatBar: HTMLElement | null = null;
+
+  netChanged(): void {
+    this.chatDock.classList.toggle('hidden', !this.g.net.active);
+    if (this.panelName === 'multiplayer') this.openPanel('multiplayer');
+  }
+
+  chatLine(line: { name: string; text: string; mine: boolean }): void {
+    const el = h(`div.chat-line${line.mine ? '.mine' : ''}`, null, h('b', null, `${line.name} : `), line.text);
+    this.chatLog.appendChild(el);
+    while (this.chatLog.children.length > 5) this.chatLog.firstElementChild?.remove();
+    setTimeout(() => el.classList.add('old'), 12000);
+  }
+
+  openChat(): void {
+    if (this.chatBar) { this.chatBar.remove(); this.chatBar = null; return; }
+    const input = h('input.text', { type: 'text', maxlength: 120, placeholder: 'Votre message…', enterkeyhint: 'send' }) as HTMLInputElement;
+    const send = (t: string) => {
+      if (!t.trim()) return;
+      this.g.say(t);
+      input.value = '';
+      close();
+    };
+    const close = () => { this.chatBar?.remove(); this.chatBar = null; };
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') send(input.value);
+      if (e.key === 'Escape') close();
+    });
+    const quick = ['Salut ! 👋', 'Viens voir ! 👀', 'Merci ! 💕', 'On va au village ?', 'Bravo ! 🎉', 'Je reviens 🏃'];
+    this.chatBar = h('div.chat-bar', { onpointerdown: (e: Event) => e.stopPropagation() },
+      h('div.chat-quick', null, ...quick.map((q) => h('button.chip', { onclick: () => send(q) }, q))),
+      h('div.row', null, input, h('button.btn.small', { onclick: () => send(input.value) }, 'Envoyer'), h('button.btn.small.ghost', { onclick: close }, '✕')),
+    );
+    this.root.appendChild(this.chatBar);
+    setTimeout(() => input.focus(), 50);
+  }
+
   // ------------------------------------------------------------ panels
   openPanel(name: string, ...args: any[]): void {
     this.closeDialogue();
@@ -329,15 +499,18 @@ export class UI {
   }
 
   // ------------------------------------------------------------ dialogue
-  dialogue(npcId: string, text: string, options: { label: string; cls?: string; fn: () => void }[]): void {
+  dialogue(npc: string | { name: string; role: string; meter: string }, text: string, options: { label: string; cls?: string; fn: () => void }[]): void {
     this.closeDialogue();
-    const def = NPC_BY_ID[npcId];
-    const st = this.g.ctx.state.npcs[npcId];
-    const lvl = Math.floor((st?.friendship ?? 0) / FRIEND_POINTS_PER_LEVEL);
-    const leaves = '🍃'.repeat(Math.min(10, lvl)) + '·'.repeat(Math.max(0, 10 - lvl));
+    let who: { name: string; role: string; meter: string };
+    if (typeof npc === 'string') {
+      const def = NPC_BY_ID[npc];
+      const st = this.g.ctx.state.npcs[npc];
+      const lvl = Math.floor((st?.friendship ?? 0) / FRIEND_POINTS_PER_LEVEL);
+      who = { name: def?.name ?? npc, role: def?.role ?? '', meter: '🍃'.repeat(Math.min(10, lvl)) + '·'.repeat(Math.max(0, 10 - lvl)) };
+    } else who = npc;
     const p = h('p', null, '');
     this.dialogueEl = h('div.dialogue', { onpointerdown: (e: Event) => e.stopPropagation() },
-      h('div.who', null, h('b', null, def?.name ?? npcId), h('span.role', null, def?.role ?? ''), h('span.leaves', { title: 'Amitié' }, leaves)),
+      h('div.who', null, h('b', null, who.name), h('span.role', null, who.role), h('span.leaves', { title: 'Amitié' }, who.meter)),
       p,
       h('div.opts', null, ...options.map((o) => h(`button.btn.small${o.cls ? `.${o.cls}` : ''}`, { onclick: () => { this.g.audio.play('click'); o.fn(); } }, o.label))),
     );
@@ -382,6 +555,22 @@ export class UI {
 
   confirm(text: string, yes: () => void, yesLabel = 'Oui', noLabel = 'Non'): void {
     this.showPanel('confirm', '', h('div.center', null, h('p', { style: { fontSize: '18px' } }, text), h('div.row', { style: { justifyContent: 'center' } }, h('button.btn.ghost', { onclick: () => this.closePanel() }, noLabel), h('button.btn', { onclick: () => { this.closePanel(); yes(); } }, yesLabel))), { size: 'narrow' });
+  }
+
+  // ------------------------------------------------------------ one-time tips
+  private tipEl: HTMLElement | null = null;
+  /** Show a friendly tip once per save (can be turned off in the menu). */
+  tip(id: string, icon: string, title: string, text: string): void {
+    const st = this.g.ctx.state;
+    if (!this.g.settings.tips) return;
+    const seen: string[] = Array.isArray(st.flags.tips) ? st.flags.tips : (st.flags.tips = []);
+    if (seen.includes(id)) return;
+    seen.push(id);
+    this.tipEl?.remove();
+    const el = h('div.tip-card', { onpointerdown: (e: Event) => e.stopPropagation() }, h('span.em', null, icon), h('div', null, h('b', null, title), h('p', null, text)), h('button.btn.small', { onclick: () => el.remove() }, 'OK'));
+    this.tipEl = el;
+    this.root.appendChild(el);
+    setTimeout(() => el.remove(), 16000);
   }
 
   confetti(): void {

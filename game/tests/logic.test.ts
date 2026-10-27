@@ -111,6 +111,11 @@ describe('quests', () => {
     c.npcs.talk('moss');
     expect(c.quests.story?.done).toBe(true);
     expect(c.quests.claim('s0')).toBe(true);
+    expect(c.quests.story?.id).toBe('sh');
+    expect(c.state.flags.houseRuined).toBe(true);
+    c.progress('repair', 'house');
+    expect(c.quests.story?.done).toBe(true);
+    expect(c.quests.claim('sh')).toBe(true);
     expect(c.quests.story?.id).toBe('s1');
     for (let i = 0; i < 6; i++) {
       c.farming.till(10 + i, 30);
@@ -130,10 +135,10 @@ describe('quests', () => {
   });
   it('deliver quests consume items', () => {
     const c = fresh();
-    c.state.quests.storyStep = 9;
+    c.state.quests.storyStep = STORY.findIndex((q) => q.id === 's9');
     c.state.quests.active = [];
     c.quests.ensureStory();
-    expect(c.quests.story?.id).toBe(STORY[9].id);
+    expect(c.quests.story?.id).toBe('s9');
     c.inventory.add('plank', 30);
     expect(c.quests.deliver('s9')).toBe(true);
     expect(c.inventory.count('plank')).toBe(0);
@@ -259,11 +264,151 @@ describe('save system', () => {
     expect(s.weather.current).toBeDefined();
     expect(s.inventory.length).toBe(s.inventorySize);
   });
+  it('v3 saves keep their story position after the house chapter was added', () => {
+    const c = fresh();
+    const raw = JSON.parse(JSON.stringify(c.state));
+    raw.version = 3;
+    raw.quests.storyStep = 3; // was on s3 (village)
+    delete raw.flags.houseRuined;
+    const s = migrate(raw);
+    expect(STORY[s.quests.storyStep].id).toBe('s3');
+    expect(s.flags.houseRuined).toBe(false);
+    const fresh0 = JSON.parse(JSON.stringify(c.state));
+    fresh0.version = 3;
+    fresh0.quests.storyStep = 0;
+    expect(migrate(fresh0).quests.storyStep).toBe(0);
+  });
   it('export/import strings', () => {
     const c = fresh();
     const sm = new SaveManager(new MemoryAdapter());
     const code = sm.exportString(c.state);
     expect(sm.importString(code)?.player.name).toBe('Test');
     expect(sm.importString('garbage')).toBeNull();
+  });
+});
+
+describe('hamlet (Clairefontaine)', () => {
+  const rich = () => {
+    const c = fresh();
+    c.state.player.coins = 100000;
+    for (const [id, q] of [['wood', 900], ['stone', 900], ['fiber', 300], ['thatch', 50], ['rope', 50], ['timber', 80], ['cut_stone', 80], ['glass', 40], ['brick', 60], ['plank', 60], ['iron_bar', 10], ['coal', 40], ['cloth', 10], ['copper_bar', 10], ['gold_bar', 4]] as [string, number][]) c.inventory.add(id, q, true);
+    return c;
+  };
+
+  it('data references real items and decorations', async () => {
+    const { HAMLET_BUILDINGS, HAMLET_GOALS, VILLAGER_TRAITS } = await import('../src/data/hamlet');
+    const { DECOR_BY_ID } = await import('../src/data/decor');
+    for (const b of HAMLET_BUILDINGS) {
+      for (const [id] of b.items) expect(ITEMS[id], `${b.id} cost ${id}`).toBeDefined();
+      for (const o of b.output ?? []) expect(ITEMS[o.id], `${b.id} output ${o.id}`).toBeDefined();
+    }
+    for (const g of HAMLET_GOALS) for (const [id] of g.reward.items ?? []) expect(ITEMS[id] ?? DECOR_BY_ID[id], `goal ${g.id} reward ${id}`).toBeDefined();
+    for (const t of Object.values(VILLAGER_TRAITS)) for (const id of t.wishes) expect(ITEMS[id], `wish ${id}`).toBeDefined();
+    for (const r of RECIPES) expect(ITEMS[r.out] ?? DECOR_BY_ID[r.out], `recipe out ${r.out}`).toBeDefined();
+  });
+
+  it('first home brings a villager immediately, workplaces produce every morning', () => {
+    const c = rich();
+    expect(c.state.regions.hamlet.unlocked).toBe(true);
+    expect(c.building.place('h_hut', 10, 10, 0, 'hamlet')).not.toBeNull();
+    expect(c.hamlet.population()).toBe(1);
+    expect(c.state.hamlet.villagers[0].homeUid).toBe(c.state.hamlet.placed[0].uid);
+    // hamlet buildings can't go on the farm, farm buildings can't go in the hamlet
+    expect(c.building.canPlace('h_hut', 20, 20, 0, 'farm').ok).toBe(false);
+    expect(c.building.canPlace('coop', 20, 20, 0, 'hamlet').ok).toBe(false);
+    expect(c.building.canPlace('h_hut', 0, 0, 0, 'hamlet').ok).toBe(false); // outside the clearing
+    expect(c.building.canPlace('h_hut', 10, 10, 0, 'hamlet').ok).toBe(false); // occupied
+    const work = c.building.place('h_lumber', 14, 10, 0, 'hamlet')!;
+    expect(c.hamlet.workers(work.uid).length).toBe(1);
+    c.time.sleep();
+    expect(c.state.hamlet.chest.find((s) => s.id === 'wood')!.qty).toBeGreaterThan(0);
+    const before = c.inventory.count('wood');
+    const got = c.hamlet.collect();
+    expect(got.items.length).toBeGreaterThan(0);
+    expect(c.inventory.count('wood')).toBeGreaterThan(before);
+    expect(c.state.hamlet.chest.length).toBe(0);
+    expect(c.state.hamlet.goals).toEqual(expect.arrayContaining(['g_home', 'g_villager', 'g_work', 'g_collect']));
+  });
+
+  it('free beds attract villagers each morning, levels unlock buildings', () => {
+    const c = rich();
+    c.building.place('h_cottage', 10, 10, 0, 'hamlet');
+    c.building.place('h_cottage', 14, 10, 0, 'hamlet');
+    c.building.place('h_well', 18, 10, 0, 'hamlet');
+    expect(c.building.affordable('h_tavern').ok).toBe(false); // needs hamlet level 2
+    for (let i = 0; i < 5; i++) c.time.sleep();
+    expect(c.hamlet.population()).toBe(4);
+    expect(c.state.hamlet.level).toBe(2);
+    expect(c.building.affordable('h_tavern').ok).toBe(true);
+    for (const v of c.state.hamlet.villagers) expect(v.homeUid).not.toBeNull();
+  });
+
+  it('wishes can be delivered for rewards; storing a home makes villagers homeless', () => {
+    const c = rich();
+    const home = c.building.place('h_hut', 10, 10, 0, 'hamlet')!;
+    const v = c.state.hamlet.villagers[0];
+    v.wish = { id: 'bread', qty: 1, until: c.state.time.day + 3 };
+    const coins = c.state.player.coins;
+    expect(c.hamlet.deliverWish(v.uid).ok).toBe(true); // starter kit has bread
+    expect(c.state.player.coins).toBeGreaterThan(coins);
+    expect(v.wish).toBeNull();
+    expect(c.hamlet.gift(v.uid, 'wood').ok).toBe(true);
+    expect(c.hamlet.gift(v.uid, 'wood').ok).toBe(false); // once a day
+    expect(c.building.store(home.uid)).toBe(true);
+    expect(v.homeUid).toBeNull();
+    expect(c.hamlet.targetHappiness(v)).toBeLessThan(50);
+  });
+
+  it('old saves gain the hamlet on load', () => {
+    const raw = JSON.parse(JSON.stringify(createNewGame('Old', 'F', undefined, 9)));
+    delete raw.hamlet;
+    delete raw.regions.hamlet;
+    const s = migrate(raw);
+    expect(s.hamlet.villagers).toEqual([]);
+    expect(s.regions.hamlet.unlocked).toBe(true);
+  });
+});
+
+describe('rewarded ads (always optional, capped per day)', () => {
+  it('daily limits, free offers and doubled earnings', () => {
+    const c = fresh();
+    const gems = c.state.player.gems;
+    for (let i = 0; i < 5; i++) expect(c.adRewards.grant('gems')).toBe('+3 💎');
+    expect(c.adRewards.grant('gems')).toBeNull(); // 5 per day
+    expect(c.state.player.gems).toBe(gems + 15);
+    // doubled earnings need yesterday's sales
+    expect(c.adRewards.can('double_earnings')).toBe(false);
+    c.adRewards.setYesterdayEarnings(5000);
+    expect(c.adRewards.doubleAmount()).toBe(2000);
+    const coins = c.state.player.coins;
+    c.adRewards.grant('double_earnings');
+    expect(c.state.player.coins).toBe(coins + 2000);
+    expect(c.adRewards.can('double_earnings')).toBe(false);
+    // a cheap shop offer can be unlocked for free, expensive/animal ones cannot
+    const all = ['general', 'florist', 'boutique'].flatMap((id) => c.shop.offers(id));
+    const seeds = all.find((o) => o.id === 'seed_lettuce')!;
+    expect(c.adRewards.grant('free_offer', seeds)).toBeNull(); // too cheap to be worth an ad
+    const deco = all.find((o) => o.kind === 'decor' && o.currency === 'coins' && o.price >= 100 && !o.locked)!;
+    const before = c.state.decorOwned[deco.id] ?? 0;
+    expect(c.adRewards.grant('free_offer', deco)).not.toBeNull();
+    expect(c.state.decorOwned[deco.id]).toBe(before + 1);
+    // limits reset the next day
+    c.time.sleep();
+    expect(c.adRewards.left('gems')).toBe(5);
+    expect(c.adRewards.can('hamlet_boost')).toBe(false); // no hamlet workers yet
+  });
+});
+
+describe('local multiplayer', () => {
+  it('only keeps safe appearance fields from the network', async () => {
+    const { cleanLook } = await import('../src/net/LocalNet');
+    const look = cleanLook({ skin: 3, top: 'x'.repeat(500), hairStyle: 'evil', cheeks: 'yes', height: 9, __proto__: { hack: 1 }, extra: { a: 1 } });
+    expect(look.skin).toBe(3);
+    expect(look.top.length).toBeLessThanOrEqual(24);
+    expect(typeof look.hairStyle).toBe('number');
+    expect(typeof look.cheeks).toBe('boolean');
+    expect(look.height).toBe(1.08);
+    expect((look as any).extra).toBeUndefined();
+    expect(cleanLook(null).top).toBeTruthy();
   });
 });

@@ -13,6 +13,8 @@ export class Input {
   onZoom: ((delta: number) => void) | null = null;
   onKey: ((key: string) => void) | null = null;
   onDrag: ((nx: number, ny: number, phase: 'start' | 'move' | 'end') => void) | null = null;
+  /** one-finger drag outside the joystick (or mouse drag): turn the camera / look around */
+  onLook: ((dx: number, dy: number) => void) | null = null;
   /** when true, single-finger drags go to onDrag (placement mode) instead of the joystick */
   dragMode = false;
   enabled = true;
@@ -21,8 +23,11 @@ export class Input {
   private joyId: number | null = null;
   private joyOrigin = { x: 0, y: 0 };
   private joyVec = { x: 0, y: 0 };
-  private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean }>();
+  private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean; lx: number; ly: number }>();
   private pinchDist = 0;
+  private pinching = false;
+  /** first-person view: no pinch zoom, so a second finger always looks around */
+  noPinch = false;
   private base: HTMLDivElement;
   private knob: HTMLDivElement;
 
@@ -62,13 +67,15 @@ export class Input {
   }
 
   private down = (e: PointerEvent) => {
-    if (!this.enabled) return;
+    if (!this.enabled && !this.dragMode) return;
     this.canvas.setPointerCapture?.(e.pointerId);
-    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false });
-    if (this.pointers.size === 2) {
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: false, lx: e.clientX, ly: e.clientY });
+    // two fingers = pinch zoom, unless one of them is steering the joystick:
+    // then the second finger turns the camera while you keep walking
+    if (this.pointers.size === 2 && this.joyId === null && !this.noPinch) {
       const [a, b] = [...this.pointers.values()];
       this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
-      this.releaseJoy();
+      this.pinching = true;
       return;
     }
     if (this.dragMode) {
@@ -96,7 +103,7 @@ export class Input {
     p.x = e.clientX;
     p.y = e.clientY;
     if (Math.hypot(p.x - p.sx, p.y - p.sy) > 12) p.moved = true;
-    if (this.pointers.size === 2) {
+    if (this.pinching && this.pointers.size === 2) {
       const [a, b] = [...this.pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (this.pinchDist > 0) this.onZoom?.((this.pinchDist - d) * 0.004);
@@ -105,6 +112,12 @@ export class Input {
     }
     if (this.dragMode) {
       this.onDrag?.(...this.norm(e.clientX, e.clientY), 'move');
+      return;
+    }
+    if (e.pointerId !== this.joyId) {
+      if (p.moved) this.onLook?.(e.clientX - p.lx, e.clientY - p.ly);
+      p.lx = e.clientX;
+      p.ly = e.clientY;
       return;
     }
     if (e.pointerId === this.joyId) {
@@ -123,7 +136,15 @@ export class Input {
   private up = (e: PointerEvent) => {
     const p = this.pointers.get(e.pointerId);
     this.pointers.delete(e.pointerId);
-    if (this.pointers.size < 2) this.pinchDist = 0;
+    if (this.pointers.size < 2) {
+      this.pinchDist = 0;
+      if (this.pinching) {
+        this.pinching = false;
+        // the finger left on screen must not turn into a tap or a jump of the view
+        for (const q of this.pointers.values()) { q.moved = true; q.lx = q.x; q.ly = q.y; }
+        return;
+      }
+    }
     if (!p) return;
     if (this.dragMode) {
       this.onDrag?.(...this.norm(e.clientX, e.clientY), 'end');

@@ -35,4 +35,22 @@ export interface GameApi {
   goMine(floor: number): void;
   startMinigame(id: string): void;
   previewLook(look: Appearance | null): void;
+  rotateCamera(d: number): void;
+  /** Optional rewarded ad; resolves with the reward text, or null. */
+  watchAd(p: import('../systems/AdRewards').AdPlacement, offer?: import('../systems/Shop').Offer): Promise<string | null>;
+  adsAvailable(): boolean;
+  adsPrivacy(): { required: boolean; show: () => void };
+  toggleView(): void;
+  readonly view: 'iso' | 'fp';
+  guideInfo(): import('../game/Guide').GuideInfo | null;
+  trackQuest(id: string | null): void;
+  groundY(x: number, z: number): number;
+  emotes(): { id: string; icon: string; name: string }[];
+  emote(id: string): void;
+  replayIntro(): void;
+  /** rainbow strength for the overhead-view sky arc (0 = none) */
+  rainbowOverlay(): number;
+  /** local multiplayer (same Wi-Fi, no server) */
+  readonly net: import('../net/LocalNet').LocalNet;
+  say(text: string): void;
 }

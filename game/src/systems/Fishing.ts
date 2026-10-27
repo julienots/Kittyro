@@ -22,7 +22,7 @@ export class FishingSystem {
     const season = seasonOfDay(st.time.day);
     const w = st.weather.current;
     return FISH.filter((f) => {
-      if (!f.regions.includes(region)) return false;
+      if (!f.regions.includes(region === 'hamlet' ? 'farm' : region)) return false;
       if (magic) return true;
       if (f.seasons !== 'all' && !f.seasons.includes(season)) return false;
       if (!timeMatches(f.time, st.time.minute)) return false;

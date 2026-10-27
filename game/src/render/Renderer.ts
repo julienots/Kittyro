@@ -167,6 +167,9 @@ export class Renderer {
     }
   }
 
+  /** Optional overlay drawn on top with its own depth (first-person hands). */
+  overlay: { scene: THREE.Scene; camera: THREE.Camera; visible: boolean } | null = null;
+
   render(): void {
     if (this.post) {
       this.renderer.setRenderTarget(this.post.rt);
@@ -175,6 +178,28 @@ export class Renderer {
       this.renderer.render(this.post.scene, this.post.cam);
     } else {
       this.renderer.render(this.scene, this.camera);
+    }
+    if (this.overlay?.visible) {
+      const auto = this.renderer.autoClear;
+      this.renderer.autoClear = false;
+      this.renderer.clearDepth();
+      this.renderer.render(this.overlay.scene, this.overlay.camera);
+      this.renderer.autoClear = auto;
+    }
+  }
+
+  /** Copy of the current frame (for cross-fading between regions). */
+  snapshot(): HTMLCanvasElement | null {
+    try {
+      this.render(); // same task as the copy: the drawing buffer is still intact
+      const src = this.renderer.domElement;
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(src.width / 2));
+      c.height = Math.max(1, Math.round(src.height / 2));
+      c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
+      return c;
+    } catch {
+      return null;
     }
   }
 

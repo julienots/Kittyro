@@ -3,6 +3,7 @@ import { T, type RegionLayout } from './Layout';
 import type { Season } from '../state/types';
 import { terrainMat, globalUniforms } from '../render/Materials';
 import { Noise2D } from '../core/Random';
+import { buildOutskirts } from './Outskirts';
 
 /**
  * Terrain = a floating diorama tile: soft vertex-coloured ground with painterly
@@ -56,6 +57,8 @@ export interface TerrainResult {
   skirt: THREE.Mesh;
   water: THREE.Mesh | null;
   lava: THREE.Mesh | null;
+  /** land around the region (outdoor regions only) */
+  outskirts: THREE.Group | null;
   heightAt: (x: number, z: number) => number;
 }
 
@@ -237,15 +240,18 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
     lava = new THREE.Mesh(lg, lavaMaterial());
     lava.name = 'lava';
   }
-  return {
-    ground, skirt, water, lava,
-    heightAt: (x, z) => {
-      const fx = Math.max(0, Math.min(VW - 1.001, x * S)), fz = Math.max(0, Math.min(VD - 1.001, z * S));
-      const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
-      const a = vh[z0 * VW + x0], b = vh[z0 * VW + x0 + 1], c = vh[(z0 + 1) * VW + x0], e = vh[(z0 + 1) * VW + x0 + 1];
-      return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz;
-    },
+  const heightAt = (x: number, z: number) => {
+    const fx = Math.max(0, Math.min(VW - 1.001, x * S)), fz = Math.max(0, Math.min(VD - 1.001, z * S));
+    const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+    const a = vh[z0 * VW + x0], b = vh[z0 * VW + x0 + 1], c = vh[(z0 + 1) * VW + x0], e = vh[(z0 + 1) * VW + x0 + 1];
+    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz;
   };
+  let outskirts: THREE.Group | null = null;
+  if (!L.indoor) {
+    outskirts = buildOutskirts({ L, season, heightAt, water, colorOf: (t) => tileColor(t, season, gc, L.seasonal, L.id) });
+    skirt.visible = false;
+  }
+  return { ground, skirt, water, lava, outskirts, heightAt };
 }
 
 export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMaterial {

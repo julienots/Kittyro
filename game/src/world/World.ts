@@ -17,6 +17,7 @@ import { FARM_THEMES } from '../data/shop';
 import type { Particles } from '../render/Particles';
 import { FarmView } from './FarmView';
 import { HouseView } from './HouseView';
+import { HamletView } from './HamletView';
 import type { MineFloor } from '../systems/Mining';
 import { Random } from '../core/Random';
 
@@ -63,6 +64,7 @@ export class World {
   interactables: Interactable[] = [];
   farm: FarmView | null = null;
   house: HouseView | null = null;
+  hamlet: HamletView | null = null;
   mineFloor: MineFloor | null = null;
   waterfalls: THREE.Mesh[] = [];
   private pointLights: THREE.PointLight[] = [];
@@ -110,6 +112,7 @@ export class World {
     }
     if (this.terrain.water) this.root.add(this.terrain.water);
     if (this.terrain.lava) this.root.add(this.terrain.lava);
+    if (this.terrain.outskirts) this.root.add(this.terrain.outskirts);
     this.root.add(this.nodeBatch.group, this.propBatch.group, this.glowBatch.group, this.grassBatch.group);
     this.dynBlocked = new Uint8Array(this.layout.w * this.layout.d);
     this.buildProps();
@@ -120,6 +123,11 @@ export class World {
       this.farm = new FarmView(this.ctx, this, this.particles);
       this.root.add(this.farm.group);
       this.farm.build();
+    }
+    if (region === 'hamlet') {
+      this.hamlet = new HamletView(this.ctx, this, this.particles);
+      this.root.add(this.hamlet.group);
+      this.hamlet.build();
     }
     if (region === 'house') {
       this.house = new HouseView(this.ctx, this);
@@ -135,6 +143,8 @@ export class World {
     this.farm = null;
     this.house?.dispose();
     this.house = null;
+    this.hamlet?.dispose();
+    this.hamlet = null;
     for (const s of this.structures) {
       s.obj.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -152,6 +162,7 @@ export class World {
       this.terrain.skirt.geometry.dispose();
       this.terrain.water?.geometry.dispose();
       this.terrain.lava?.geometry.dispose();
+      this.terrain.outskirts?.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     }
     this.nodeBatch.dispose();
     this.propBatch.dispose();
@@ -222,6 +233,7 @@ export class World {
     }
     this.farm?.markBlocked(this.dynBlocked, L.w);
     this.house?.markBlocked(this.dynBlocked, L.w);
+    this.hamlet?.markBlocked(this.dynBlocked, L.w);
   }
 
   isWaterTile(tx: number, tz: number): boolean {
@@ -462,7 +474,7 @@ export class World {
           const restored = !!st.village[s.id!]?.restored;
           model = villageBuildingModel(def.style, s.w, s.d, def.roof, def.wall, restored);
           const g = new THREE.Group();
-          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true }));
+          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true, textured: true }));
           m.castShadow = m.receiveShadow = true;
           g.add(m);
           if (model.windows) g.add(new THREE.Mesh(model.windows, windowMat));
@@ -623,6 +635,8 @@ export class World {
       if (s.kind === 'mine_entrance') out.push({ id: 'mine', kind: 'mine', x: L.anchors.mine_door.x, z: L.anchors.mine_door.z - 0.6, radius: 1.6, label: 'Entrer dans la mine', icon: '⛏️' });
       if (s.kind === 'bridge' && s.id === 'woods_bridge' && s.params?.broken) out.push({ id: 'woods_bridge', kind: 'bridge', x: cx, z: s.z + s.d + 0.3, radius: 2.2, label: 'Vieux pont cassé', icon: '🌉' });
       if (s.kind === 'shrine') out.push({ id: 'shrine', kind: 'shrine', x: cx, z: s.z + 1.2, radius: 1.4, label: 'Autel de cristal', icon: '💜' });
+      if (s.kind === 'hamlet_board') out.push({ id: 'register', kind: 'register', x: cx, z: s.z + 1.6, radius: 1.5, label: 'Registre du hameau', icon: '📒' });
+      if (s.kind === 'tent' && s.id === 'traveller_tent') { out.push({ id: 'traveller', kind: 'traveller', x: cx, z: s.z + s.d + 0.5, radius: 1.4, label: 'Tente du voyageur', icon: '⛺' }); continue; }
       if (s.kind === 'tent') out.push({ id: 'camp', kind: 'camp', x: cx + 1.5, z: s.z + 2, radius: 1.5, label: 'Camp de Bibi', icon: '⛺' });
       if (s.kind === 'igloo') out.push({ id: 'igloo', kind: 'secret', x: cx, z: s.z + s.d + 0.6, radius: 1.4, label: 'Igloo mystérieux', icon: '❄️', data: { secret: 'igloo' } });
       if (s.kind === 'lighthouse') out.push({ id: 'lighthouse', kind: 'secret', x: cx, z: s.z + s.d + 0.4, radius: 1.4, label: 'Phare', icon: '🗼', data: { secret: 'lighthouse' } });
@@ -654,12 +668,15 @@ export class World {
     }
     for (const w of this.waterfalls) (w.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
     this.farm?.update(dt, time, night);
+    this.hamlet?.update(dt, night);
+    this.house?.update(time);
     // chimney smoke & campfires
     this.smokeTimer -= dt;
     if (this.smokeTimer <= 0) {
       this.smokeTimer = 0.35;
       for (const p of this.smokePoints) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
       for (const p of this.farm?.smokePoints ?? []) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
+      for (const p of this.hamlet?.smokePoints ?? []) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
       for (const p of this.firePoints) {
         this.particles.emit({ x: p.x + (Math.random() - 0.5) * 0.3, y: p.y, z: p.z + (Math.random() - 0.5) * 0.3, vy: 1.2, life: 0.8, size: 0.3, size1: 0.05, color: 0xffa03a, frame: 0, additive: true });
         this.particles.smoke(p.x, p.y + 0.6, p.z, true);
@@ -683,7 +700,7 @@ export class World {
       this.pointLights.push(l);
       this.root.add(l);
     }
-    const pts = [...this.lightPoints, ...(this.farm?.lightPoints ?? []), ...(this.house?.lightPoints ?? [])];
+    const pts = [...this.lightPoints, ...(this.farm?.lightPoints ?? []), ...(this.house?.lightPoints ?? []), ...(this.hamlet?.lightPoints ?? [])];
     pts.sort((a, b) => a.distanceToSquared(focus) - b.distanceToSquared(focus));
     for (let i = 0; i < this.pointLights.length; i++) {
       const l = this.pointLights[i];

@@ -9,14 +9,15 @@ import { NPCS, NPC_BY_ID, type NpcDef } from '../data/npcs';
 import { ANIMAL_BY_ID, ANIMALS } from '../data/animals';
 import { CREATURE_BY_ID } from '../data/creatures';
 import { INSECT_BY_ID, type InsectDef } from '../data/insects';
-import { emojiSprite } from '../render/EmojiSprite';
+import { emojiSprite, questMarker } from '../render/EmojiSprite';
 import { item } from '../data/items';
 import { angleLerp, damp } from '../core/MathUtil';
 import { Random, rng } from '../core/Random';
 import { isNight } from '../data/constants';
 import { FARM } from '../state/newGame';
-import { footprintOf } from '../systems/Building';
-import type { AnimalState } from '../state/types';
+import { doorPoint } from '../systems/Building';
+import type { AnimalState, VillagerState } from '../state/types';
+import { VILLAGE_BUILDINGS } from '../data/village';
 
 /** Shared path-following mover for NPCs and animals. */
 class Mover {
@@ -62,6 +63,8 @@ export class NpcAgent extends Mover {
   currentAnchor = '';
   talking = 0;
   bubble: THREE.Sprite | null = null;
+  marker: THREE.Sprite | null = null;
+  markerCh = '';
 
   constructor(world: World, def: NpcDef, outline: boolean) {
     super(world);
@@ -108,7 +111,12 @@ export class NpcAgent extends Mover {
       rig.head.rotation.z = Math.sin(this.idleT * 0.8) * 0.06;
     }
     if (this.bubble) this.bubble.position.set(this.pos.x, this.pos.y + 1.85 * this.def.scale + Math.sin(this.idleT * 3) * 0.05, this.pos.z);
+    if (this.marker) {
+      this.markT += dt;
+      this.marker.position.set(this.pos.x, this.pos.y + 2.05 * this.def.scale + Math.abs(Math.sin(this.markT * 3)) * 0.15, this.pos.z);
+    }
   }
+  private markT = 0;
 }
 
 // ---------------------------------------------------------------- Farm animal
@@ -135,10 +143,7 @@ export class AnimalAgent extends Mover {
     this.pos.set(data.x, 0, data.z);
     this.r = new Random(data.uid.length * 991 + data.bornDay);
     const home = data.homeUid ? ctx.state.farm.placed.find((p) => p.uid === data.homeUid) : null;
-    if (home) {
-      const fp = footprintOf(home.kind, home.x, home.z, home.rot);
-      this.home = { x: (fp.x0 + fp.x1) / 2, z: fp.z1 + 0.8 };
-    }
+    if (home) this.home = doorPoint(home.kind, home.x, home.z, home.rot, 0.8);
     // keep inside walkable space
     if (world.isBlocked(this.pos.x, this.pos.z, 0.2)) {
       const p = world.randomWalkable(this.home?.x ?? FARM.spawn.x + 3, this.home?.z ?? FARM.spawn.z + 2, 3, this.r);
@@ -234,7 +239,7 @@ export class AnimalAgent extends Mover {
       this.anim += dt * (sp === 'rabbit' ? 10 : 12) * (this.speed / 1.5);
       const hop = sp === 'rabbit' || sp === 'sheep' || sp === 'dog';
       rig.body.position.y = hop ? Math.abs(Math.sin(this.anim)) * 0.14 : Math.abs(Math.sin(this.anim)) * 0.05;
-      rig.body.rotation.z = Math.sin(this.anim) * (sp === 'duck' || sp === 'chicken' || sp === 'pig' ? 0.14 : 0.05);
+      rig.body.rotation.z = Math.sin(this.anim) * (sp === 'duck' || sp === 'chicken' || sp === 'pig' || sp === 'goose' || sp === 'turkey' || sp === 'penguin' ? 0.14 : 0.05);
       rig.head.rotation.x = Math.sin(this.anim * 2) * 0.08;
       rig.tail.rotation.y = Math.sin(this.anim * 2) * 0.4;
       rig.body.scale.y = damp(rig.body.scale.y, 1, 8, dt);
@@ -468,10 +473,46 @@ function makeCritter(id: string): THREE.Object3D {
   return g;
 }
 
+// ---------------------------------------------------------------- Villagers (hamlet) & passers-by (Willowbrook)
+const PASSERBY_LINES = [
+  'Bonjour ! Belle journée, n\'est-ce pas ?', 'Je vais au marché, il paraît que les tomates sont superbes.', 'Le village change à vue d\'œil grâce à toi !',
+  'Tu as vu ? La fontaine coule de nouveau.', 'Je promène mes pensées… et mes pieds.', 'Il paraît qu\'un hameau se construit au sud de ta ferme !',
+  'Mes enfants adorent les lucioles du soir.', 'J\'ai croisé un Moussinet près du ruisseau ce matin !',
+];
+
+export class VillagerAgent extends NpcAgent {
+  goal = '';
+  inside = false;
+  private wanderT = Math.random() * 6;
+  line = '';
+
+  constructor(world: World, public data: VillagerState | null, look: VillagerState['look'], name: string, role: string, outline: boolean) {
+    super(world, { id: data ? `v:${data.uid}` : `p:${name}`, name, role, desc: '', look, scale: 0.86 + ((name.length * 7) % 10) / 60, loves: [], likes: [], dislikes: [], schedule: [], lines: [], rain: '', night: '', winter: '' } as NpcDef, outline);
+    this.speed = 1.4 + Math.random() * 0.4;
+    this.line = PASSERBY_LINES[(name.length * 3) % PASSERBY_LINES.length];
+  }
+
+  setInside(v: boolean): void {
+    this.inside = v;
+    this.rig.root.visible = !v;
+    if (this.bubble) this.bubble.visible = !v;
+  }
+
+  /** Small idle wander around the current goal. */
+  idle(dt: number, cx: number, cz: number, r: number, rng: Random): void {
+    this.wanderT -= dt;
+    if (this.wanderT > 0 || this.path.length) return;
+    this.wanderT = 5 + Math.random() * 8;
+    const p = this.world.randomWalkable(cx, cz, r, rng);
+    if (p) this.goTo(p.x, p.z);
+  }
+}
+
 // ---------------------------------------------------------------- Manager
 export class EntityManager {
   readonly group = new THREE.Group();
   npcs: NpcAgent[] = [];
+  villagers: VillagerAgent[] = [];
   animals: AnimalAgent[] = [];
   wild: WildAgent[] = [];
   private spawnT = 8;
@@ -486,9 +527,11 @@ export class EntityManager {
 
   clear(): void {
     for (const a of this.animals) a.dispose();
-    for (const n of this.npcs) n.bubble?.removeFromParent();
+    for (const n of this.npcs) { n.bubble?.removeFromParent(); n.marker?.removeFromParent(); }
+    for (const n of this.villagers) n.bubble?.removeFromParent();
     this.group.clear();
     this.npcs = [];
+    this.villagers = [];
     this.animals = [];
     this.wild = [];
   }
@@ -512,6 +555,8 @@ export class EntityManager {
       this.npcs.push(n);
       this.group.add(n.rig.root);
     }
+    if (region === 'hamlet') this.syncVillagers(true);
+    if (region === 'village') this.spawnPassersby();
     if (region === 'farm') {
       for (const data of st.animals) {
         const ag = new AnimalAgent(this.world, data, this.outline, this.particles, this.ctx);
@@ -558,6 +603,7 @@ export class EntityManager {
         // walk off toward the edge then vanish
         if (!n.path.length) {
           n.rig.root.removeFromParent();
+          n.marker?.removeFromParent();
           this.npcs = this.npcs.filter((x) => x !== n);
         }
         continue;
@@ -596,6 +642,125 @@ export class EntityManager {
     }
   }
 
+  // ------------------------------------------------ hamlet villagers
+  /** Make the agents match the hamlet's villagers (newcomers walk in from the trail). */
+  syncVillagers(initial = false): void {
+    if (this.world.region !== 'hamlet') return;
+    const st = this.ctx.state.hamlet;
+    for (const v of this.villagers.filter((a) => a.data && !st.villagers.some((x) => x.uid === a.data!.uid))) {
+      v.rig.root.removeFromParent();
+      v.bubble?.removeFromParent();
+    }
+    this.villagers = this.villagers.filter((a) => !a.data || st.villagers.some((x) => x.uid === a.data!.uid));
+    for (const data of st.villagers) {
+      if (this.villagers.some((a) => a.data?.uid === data.uid)) continue;
+      const ag = new VillagerAgent(this.world, data, data.look, data.name, '', this.outline);
+      const goal = this.villagerGoal(ag);
+      const entry = this.world.layout.anchors.farm_entry;
+      const start = initial ? this.world.randomWalkable(goal.x, goal.z, 1.5, this.r) ?? goal : entry;
+      ag.pos.set(start.x, 0, start.z);
+      ag.goal = initial ? goal.key : '';
+      if (initial && goal.inside) ag.setInside(true);
+      this.villagers.push(ag);
+      this.group.add(ag.rig.root);
+      if (!initial) this.particles.sparkle(ag.pos.x, 1, ag.pos.z);
+    }
+  }
+
+  /** Where a villager wants to be right now (home / work / tavern / plaza). */
+  private villagerGoal(ag: VillagerAgent): { key: string; x: number; z: number; inside: boolean; wander: number } {
+    const st = this.ctx.state;
+    const m = st.time.minute;
+    const v = ag.data!;
+    const placed = st.hamlet.placed;
+    const doorOf = (uid: string | null) => {
+      const p = uid ? placed.find((q) => q.uid === uid) : null;
+      if (!p) return null;
+      return doorPoint(p.kind, p.x, p.z, p.rot, 0.6);
+    };
+    const plaza = this.world.layout.anchors.plaza;
+    const home = doorOf(v.homeUid);
+    const raining = st.weather.current === 'rain' || st.weather.current === 'storm';
+    if (m < 7 * 60 || m >= 21 * 60 || (raining && !v.jobUid && m >= 9 * 60)) {
+      if (home) return { key: `home:${v.homeUid}`, ...home, inside: true, wander: 0 };
+      const t = this.world.layout.anchors.register;
+      return { key: 'camp', x: t.x - 2.5, z: t.z + 2.5, inside: false, wander: 1 };
+    }
+    if (m < 17.5 * 60) {
+      const work = doorOf(v.jobUid);
+      if (work) return { key: `work:${v.jobUid}`, ...work, inside: false, wander: 1.4 };
+      return { key: 'plaza', x: plaza.x, z: plaza.z, inside: false, wander: 4 };
+    }
+    const tavern = placed.find((p) => p.kind === 'h_tavern') ?? placed.find((p) => p.kind === 'h_bandstand');
+    const t = tavern ? doorOf(tavern.uid) : null;
+    if (t && (v.happiness + v.name.length * 7) % 3 !== 0) return { key: `fun:${tavern!.uid}`, ...t, inside: false, wander: 2 };
+    return { key: 'plaza', x: plaza.x, z: plaza.z, inside: false, wander: 3 };
+  }
+
+  private updateVillagers(dt: number): void {
+    for (const ag of this.villagers) {
+      if (!ag.data) {
+        // passers-by in Willowbrook stroll between landmarks
+        if (!ag.path.length && Math.random() < dt * 0.15) {
+          const anchors = Object.entries(this.world.layout.anchors).filter(([k]) => !k.endsWith('_entry'));
+          const [, a] = this.r.pick(anchors);
+          ag.goTo(a.x + this.r.range(-1, 1), a.z + this.r.range(-1, 1));
+        }
+        continue;
+      }
+      const g = this.villagerGoal(ag);
+      if (g.key !== ag.goal) {
+        ag.goal = g.key;
+        if (ag.inside) {
+          // step out of the house
+          const p = this.world.randomWalkable(ag.pos.x, ag.pos.z, 1, this.r);
+          if (p) ag.pos.set(p.x, 0, p.z);
+          ag.setInside(false);
+        }
+        if (!ag.goTo(g.x + this.r.range(-0.4, 0.4), g.z + this.r.range(-0.2, 0.4))) ag.path = [];
+      } else if (!ag.path.length) {
+        const d = Math.hypot(ag.pos.x - g.x, ag.pos.z - g.z);
+        if (g.inside && d < 1.2 && !ag.inside) ag.setInside(true);
+        else if (!g.inside && g.wander) ag.idle(dt, g.x, g.z, g.wander, this.r);
+      }
+      // wish bubble
+      const want = ag.data.wish && !ag.inside ? item(ag.data.wish.id).icon : '';
+      const cur = (ag.bubble?.userData.icon as string | undefined) ?? '';
+      if (want !== cur) {
+        ag.bubble?.removeFromParent();
+        ag.bubble = want ? emojiSprite(want, 0.5) : null;
+        if (ag.bubble) {
+          ag.bubble.userData.icon = want;
+          this.group.add(ag.bubble);
+        }
+      }
+    }
+  }
+
+  /** A few anonymous villagers strolling around Willowbrook — more as the village is restored. */
+  private spawnPassersby(): void {
+    const st = this.ctx.state;
+    const m = st.time.minute;
+    if (m < 7 * 60 || m > 21 * 60) return;
+    const restored = VILLAGE_BUILDINGS.filter((b) => st.village[b.id]?.restored).length;
+    const n = Math.min(7, 2 + Math.floor(restored / 2));
+    const rr = new Random(st.time.day * 31 + 7);
+    const anchors = Object.values(this.world.layout.anchors);
+    for (let i = 0; i < n; i++) {
+      const v = this.ctx.hamlet.makeVillager();
+      const ag = new VillagerAgent(this.world, null, v.look, v.name, 'Passant·e', this.outline);
+      const a = rr.pick(anchors);
+      const p = this.world.randomWalkable(a.x, a.z, 2, rr) ?? a;
+      ag.pos.set(p.x, 0, p.z);
+      this.villagers.push(ag);
+      this.group.add(ag.rig.root);
+    }
+  }
+
+  villagerAgent(uid: string): VillagerAgent | undefined {
+    return this.villagers.find((v) => v.data?.uid === uid);
+  }
+
   animal(uid: string): AnimalAgent | undefined {
     return this.animals.find((a) => a.data.uid === uid);
   }
@@ -608,6 +773,8 @@ export class EntityManager {
       this.updateSchedules();
     }
     for (const n of this.npcs) n.update(dt, player);
+    this.updateVillagers(dt);
+    for (const v of this.villagers) if (!v.inside) v.update(dt, player);
     for (const a of this.animals) a.update(dt, player, st.time.minute);
     for (const w of this.wild) w.update(dt, player, playerSpeed);
     // despawn
@@ -675,7 +842,7 @@ export class EntityManager {
       this.wildAnimalT = this.r.range(40, 80);
       const candidates = ANIMALS.filter((a) => a.wild && a.region === region && !this.ctx.animals.owns(a.id));
       const night = isNight(st.time.minute);
-      const pick = candidates.filter((a) => (a.id === 'hedgehog' || a.id === 'raccoon' || a.id === 'lumipanda' ? night || a.id === 'lumipanda' : true));
+      const pick = candidates.filter((a) => (a.id === 'hedgehog' || a.id === 'raccoon' || a.id === 'owl' || a.id === 'lumipanda' ? night || a.id === 'lumipanda' : true));
       if (pick.length && !this.wild.some((w) => w.kind === 'wildanimal')) {
         const def = this.r.pick(pick);
         if (def.id === 'lumipanda' && !(night && rng.chance(0.5))) return;
@@ -692,7 +859,12 @@ export class EntityManager {
   /** Entities you can interact with near the player. */
   interactables(): Interactable[] {
     const out: Interactable[] = [];
-    for (const n of this.npcs) out.push({ id: `npc:${n.def.id}`, kind: 'npc', x: n.pos.x, z: n.pos.z, radius: 1.6, label: n.def.name, icon: '💬', data: { npc: n.def.id } });
+    for (const n of this.npcs) out.push({ id: `npc:${n.def.id}`, kind: 'npc', x: n.pos.x, z: n.pos.z, radius: 2.0, label: n.def.name, icon: '💬', data: { npc: n.def.id } });
+    for (const v of this.villagers) {
+      if (v.inside) continue;
+      if (v.data) out.push({ id: `villager:${v.data.uid}`, kind: 'villager', x: v.pos.x, z: v.pos.z, radius: 1.5, label: v.data.name, icon: v.data.wish ? '💭' : '💬', data: { uid: v.data.uid } });
+      else out.push({ id: `passerby:${v.def.name}`, kind: 'passerby', x: v.pos.x, z: v.pos.z, radius: 1.4, label: v.def.name, icon: '👋', data: { agent: v } });
+    }
     for (const a of this.animals) {
       const def = a.def;
       out.push({ id: `animal:${a.data.uid}`, kind: 'animal', x: a.pos.x, z: a.pos.z, radius: 1.3 + def.scale * 0.4, label: a.data.product ? `Récolter (${a.data.name})` : `${a.data.name}`, icon: a.data.product ? item(a.data.product).icon : def.icon, data: { uid: a.data.uid } });
@@ -703,6 +875,23 @@ export class EntityManager {
       if (w.kind === 'wildanimal' && w.mode !== 'flee') out.push({ id: `wa:${w.id}`, kind: 'wildanimal', x: w.pos.x, z: w.pos.z, radius: 2.0, label: `Amadouer : ${ANIMAL_BY_ID[w.id].name}`, icon: ANIMAL_BY_ID[w.id].icon, data: { agent: w } });
     }
     return out;
+  }
+
+  /** Show "!" / "?" over NPCs that have something for you (set by the game). */
+  markerFor: ((npcId: string) => string) | null = null;
+  private markerT = 0;
+  updateMarkers(dt: number): void {
+    this.markerT -= dt;
+    if (this.markerT > 0) return;
+    this.markerT = 0.4;
+    for (const n of this.npcs) {
+      const want = this.markerFor?.(n.def.id) ?? '';
+      if (want === n.markerCh) continue;
+      n.marker?.removeFromParent();
+      n.marker = want ? questMarker(want) : null;
+      n.markerCh = want;
+      if (n.marker) this.group.add(n.marker);
+    }
   }
 
   npc(id: string): NpcAgent | undefined {

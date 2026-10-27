@@ -21,8 +21,44 @@ export class CameraRig {
   bounds: { x0: number; z0: number; x1: number; z1: number } | null = null;
   readonly forward = new THREE.Vector3();
   readonly right = new THREE.Vector3();
+  /** 'iso' = classic 2.5D view (can orbit), 'fp' = first person */
+  view: 'iso' | 'fp' = 'iso';
+  yawTarget = Math.PI / 4;
+  pitchTarget = 0.84;
+  fpPitch = -0.12;
+  eyeHeight = 1.18;
+  /** head bob & turn speed, read by the first-person hands */
+  bob = 0;
+  turnSpeed = 0;
+  private bobT = 0;
+  private roll = 0;
+  private fovKick = 0;
+  private landDip = 0;
 
   constructor(public camera: THREE.PerspectiveCamera) {}
+
+  setView(v: 'iso' | 'fp'): void {
+    this.view = v;
+    this.camera.fov = v === 'fp' ? 72 : 32;
+    this.camera.near = v === 'fp' ? 0.05 : 0.5;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** Orbit (iso) or turn the head (fp) by a yaw step in radians. */
+  rotate(d: number): void {
+    this.yawTarget += d;
+  }
+
+  /** Finger/mouse look in pixels. */
+  look(dx: number, dy: number): void {
+    if (this.view === 'fp') {
+      this.yawTarget -= dx * 0.0055;
+      this.fpPitch = clamp(this.fpPitch - dy * 0.0045, -1.25, 1.05);
+    } else {
+      this.yawTarget -= dx * 0.006;
+      this.pitchTarget = clamp(this.pitchTarget + dy * 0.003, 0.45, 1.3);
+    }
+  }
 
   snap(p: THREE.Vector3): void {
     this.target.copy(p);
@@ -40,6 +76,45 @@ export class CameraRig {
   }
 
   update(dt: number, follow: THREE.Vector3, velocity: THREE.Vector3): void {
+    const prevYaw = this.yaw;
+    this.yaw = damp(this.yaw, this.yawTarget, this.view === 'fp' ? 28 : 8, dt);
+    this.turnSpeed = (this.yaw - prevYaw) / Math.max(dt, 1e-3);
+    this.pitch = damp(this.pitch, this.pitchTarget, 8, dt);
+    this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    if (this.view === 'fp') {
+      const speed = Math.hypot(velocity.x, velocity.z);
+      const k = Math.min(1, speed / 3.6);
+      const prevBob = Math.sin(this.bobT * 2);
+      this.bobT += dt * Math.min(speed, 7) * 1.85;
+      // figure-eight head bob: two dips per stride vertically, one sway sideways
+      this.bob = -Math.abs(Math.sin(this.bobT)) * 0.05 * k + 0.025 * k;
+      const lateral = Math.sin(this.bobT) * 0.028 * k;
+      // a tiny extra dip when a foot lands
+      if (prevBob > 0 && Math.sin(this.bobT * 2) <= 0 && k > 0.3) this.landDip = 0.012 * k;
+      this.landDip = damp(this.landDip, 0, 10, dt);
+      // lean into turns & strafes
+      const side = velocity.x * this.right.x + velocity.z * this.right.z;
+      this.roll = damp(this.roll, THREE.MathUtils.clamp(-this.turnSpeed * 0.01 - side * 0.012, -0.08, 0.08) + Math.sin(this.bobT) * 0.006 * k, 8, dt);
+      // wider field of view when going fast (horse, speed buff)
+      this.fovKick = damp(this.fovKick, THREE.MathUtils.clamp((speed - 3.9) * 2.4, 0, 10), 4, dt);
+      const fov = 72 + this.fovKick;
+      if (Math.abs(this.camera.fov - fov) > 0.05) {
+        this.camera.fov = fov;
+        this.camera.updateProjectionMatrix();
+      }
+      this.cur.copy(follow);
+      this.camera.position.set(follow.x + this.right.x * lateral, follow.y + this.eyeHeight + this.bob - this.landDip, follow.z + this.right.z * lateral);
+      if (this.shakeT > 0) {
+        this.shakeT -= dt;
+        this.camera.position.x += (Math.random() - 0.5) * this.shakeAmp * 0.5;
+        this.camera.position.y += (Math.random() - 0.5) * this.shakeAmp * 0.5;
+      }
+      const cp = Math.cos(this.fpPitch);
+      this.camera.lookAt(this.camera.position.x + this.forward.x * cp, this.camera.position.y + Math.sin(this.fpPitch), this.camera.position.z + this.forward.z * cp);
+      this.camera.rotateZ(this.roll);
+      return;
+    }
     // look slightly ahead in the walking direction
     this.lookAhead.x = damp(this.lookAhead.x, velocity.x * 0.35, 3, dt);
     this.lookAhead.z = damp(this.lookAhead.z, velocity.z * 0.35, 3, dt);
@@ -54,7 +129,7 @@ export class CameraRig {
     this.cur.z = damp(this.cur.z, this.target.z, lambda, dt);
     this.zoom = damp(this.zoom, this.zoomTarget, 6, dt);
     const dist = this.baseDist * this.zoom * (this.mode === 'house' ? 0.85 : this.mode === 'cave' ? 0.8 : 1);
-    const pitch = this.mode === 'house' ? 0.98 : this.pitch;
+    const pitch = this.mode === 'house' ? Math.max(0.9, this.pitch) : this.pitch;
     const off = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(this.yaw) * Math.cos(pitch)).multiplyScalar(dist);
     this.camera.position.copy(this.cur).add(off);
     if (this.shakeT > 0) {
@@ -65,9 +140,6 @@ export class CameraRig {
       if (this.shakeT <= 0) this.shakeAmp = 0;
     }
     this.camera.lookAt(this.cur.x, this.cur.y + 0.4, this.cur.z);
-    // movement basis: camera-relative on the ground plane
-    this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
   }
 
   /** Update the see-through uniform so foliage/buildings near the player dither away. */

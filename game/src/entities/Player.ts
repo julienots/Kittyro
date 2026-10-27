@@ -7,8 +7,9 @@ import { buildAnimal, type AnimalRig } from '../models/Animals';
 import { angleLerp, clamp, damp } from '../core/MathUtil';
 import { TRAILS } from '../data/shop';
 import { ANIMAL_BY_ID } from '../data/animals';
+import { applyEmote } from './Emotes';
 
-export type PlayerAnim = 'idle' | 'walk' | 'tool' | 'fishCast' | 'fishWait' | 'fishReel' | 'happy' | 'pet' | 'sleep' | 'eat';
+export type PlayerAnim = 'idle' | 'walk' | 'tool' | 'fishCast' | 'fishWait' | 'fishReel' | 'happy' | 'pet' | 'sleep' | 'eat' | 'emote';
 
 /**
  * The player avatar: movement with collision, tap-to-move path following,
@@ -22,14 +23,16 @@ export class Player {
   facing = 0;
   private targetFacing = 0;
   anim: PlayerAnim = 'idle';
-  private animT = 0;
+  animT = 0;
   private walkT = 0;
   private toolMesh: THREE.Mesh | null = null;
-  private toolKey = '';
+  toolKey = '';
   private onImpact: (() => void) | null = null;
   private impactAt = 0.3;
   private impactDone = false;
-  private animDur = 0.5;
+  animDur = 0.5;
+  /** first-person view: the body always faces where the camera looks */
+  lockFacing: number | null = null;
   path: { x: number; z: number }[] = [];
   pathTarget: { x: number; z: number; onArrive?: () => void } | null = null;
   private blinkT = 2;
@@ -39,6 +42,7 @@ export class Player {
   lantern: THREE.PointLight | null = null;
   outline = true;
   frozen = false;
+  emoteId = '';
 
   constructor(private ctx: Ctx, private world: World, private particles: Particles) {
     this.rebuild();
@@ -61,7 +65,7 @@ export class Player {
       const def = ANIMAL_BY_ID.horse;
       this.horse = buildAnimal('horse', def.colors[h?.color ?? 0], def.scale, this.outline);
       this.root.add(this.horse.root);
-      this.rig.root.position.y = 0.95;
+      this.rig.root.position.y = 0.82;
     } else if (!riding && this.horse) {
       this.root.remove(this.horse.root);
       this.horse = null;
@@ -155,7 +159,7 @@ export class Player {
     if (manual) {
       this.path = [];
       this.pathTarget = null;
-      if (this.anim === 'fishWait' || this.anim === 'happy') this.stopAction();
+      if (this.anim === 'fishWait' || this.anim === 'happy' || this.anim === 'emote') this.stopAction();
     }
     if (!manual && this.path.length && !this.busy) {
       const wp = this.path[0];
@@ -184,7 +188,8 @@ export class Player {
     const tvz = canMove && mag > 0.05 ? (mz / (mag || 1)) * sp : 0;
     this.vel.x = damp(this.vel.x, tvx, 14, dt);
     this.vel.z = damp(this.vel.z, tvz, 14, dt);
-    if (canMove && mag > 0.05) this.targetFacing = Math.atan2(mx, mz);
+    if (this.lockFacing !== null) this.targetFacing = this.lockFacing;
+    else if (canMove && mag > 0.05) this.targetFacing = Math.atan2(mx, mz);
     // integrate with axis-separated collision (slides along walls)
     const r = this.horse ? 0.4 : 0.26;
     const nx = this.pos.x + this.vel.x * dt;
@@ -211,7 +216,7 @@ export class Player {
     st.player.z = this.pos.z;
     st.player.facing = this.facing;
     const moving = Math.hypot(this.vel.x, this.vel.z) > 0.3;
-    if (!this.busy && this.anim !== 'happy') this.anim = moving ? 'walk' : 'idle';
+    if (!this.busy && this.anim !== 'happy' && this.anim !== 'emote') this.anim = moving ? 'walk' : 'idle';
     this.animate(dt, moving);
     // footsteps & trail
     if (moving) {
@@ -257,6 +262,8 @@ export class Player {
       rig.body.position.y = damp(rig.body.position.y, 0, k, dt);
       rig.head.rotation.x = damp(rig.head.rotation.x, 0, k, dt);
       rig.head.rotation.z = damp(rig.head.rotation.z, 0, k, dt);
+      rig.body.rotation.y = damp(rig.body.rotation.y, 0, k, dt);
+      rig.head.rotation.y = damp(rig.head.rotation.y, 0, k, dt);
     };
     switch (this.anim) {
       case 'walk': {
@@ -372,8 +379,22 @@ export class Player {
       case 'sleep':
         rig.body.rotation.x = clamp(rig.body.rotation.x - dt * 2, -1.4, 0);
         break;
+      case 'emote':
+        if (!applyEmote(rig, this.emoteId, this.animT)) { this.anim = 'idle'; this.emoteId = ''; }
+        break;
     }
     if (this.horse && !moving && this.anim === 'idle') this.horse.body.position.y = damp(this.horse.body.position.y, 0, 8, dt);
+  }
+
+  /** Play an emote (interrupted by walking). */
+  emote(id: string): void {
+    if (this.busy) return;
+    this.path = [];
+    this.pathTarget = null;
+    this.showTool(null);
+    this.anim = 'emote';
+    this.emoteId = id;
+    this.animT = 0;
   }
 
   celebrate(): void {

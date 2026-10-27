@@ -14,7 +14,8 @@ export type RegionId =
   | 'frosty'
   | 'ember'
   | 'mine'
-  | 'house';
+  | 'house'
+  | 'hamlet';
 export type ToolId = 'hoe' | 'can' | 'axe' | 'pickaxe' | 'rod' | 'sickle';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mythic';
 
@@ -39,6 +40,14 @@ export interface Appearance {
   hatColor: number;
   accessory: string;
   cheeks: boolean;
+  /** v1.5 face options (optional for older saves) */
+  brow?: number;
+  mouth?: number;
+  freckles?: boolean;
+  lashes?: boolean;
+  facialHair?: number;
+  /** body height multiplier 0.92..1.08 */
+  height?: number;
 }
 
 export interface CropState {
@@ -135,6 +144,35 @@ export interface QuestState {
   claimed: boolean;
 }
 
+export interface VillagerState {
+  uid: string;
+  name: string;
+  look: Appearance;
+  trait: string;
+  homeUid: string | null;
+  jobUid: string | null;
+  happiness: number; // 0..100
+  friendship: number; // 0..100
+  arrivedDay: number;
+  wish: { id: string; qty: number; until: number } | null;
+  talkedDay: number;
+  giftedDay: number;
+}
+
+export interface HamletState {
+  name: string;
+  placed: PlacedObject[];
+  villagers: VillagerState[];
+  /** daily production waiting in the register chest */
+  chest: ItemStack[];
+  coins: number;
+  /** fractional production carried over between days */
+  carry: Record<string, number>;
+  level: number;
+  goals: string[]; // completed goal ids
+  lastDay: number;
+}
+
 export interface CollectionEntry {
   count: number;
   best?: number; // e.g. max fish size
@@ -188,6 +226,7 @@ export interface GameState {
   animals: AnimalState[];
   regions: Record<RegionId, RegionState>;
   village: Record<string, { restored: boolean; contributed: Record<string, number>; restoredDay: number }>;
+  hamlet: HamletState;
   npcs: Record<string, NpcState>;
   quests: {
     active: QuestState[];

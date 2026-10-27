@@ -85,6 +85,13 @@ const MIGRATIONS: Record<number, (s: any) => any> = {
     s.version = 3;
     return s;
   },
+  3: (s) => {
+    // v1.5 inserted the house-repair chapter after the first story quest
+    if (s.quests && s.quests.storyStep >= 1) s.quests.storyStep += 1;
+    s.flags = { ...(s.flags ?? {}), houseRuined: false };
+    s.version = 4;
+    return s;
+  },
 };
 
 /** Fill in any missing fields from a fresh game (forward-compatible, repairs partial saves). */
@@ -108,6 +115,8 @@ export function repair(raw: any): GameState {
   s.inventory = s.inventory.map((it) => (it && typeof it.id === 'string' && it.qty > 0 ? it : null));
   if (!Number.isFinite(s.player.coins) || s.player.coins < 0) s.player.coins = 0;
   if (!s.farm.placed.some((p) => p.kind === 'house')) s.farm.placed.unshift(base.farm.placed[0]);
+  // free clothes added in updates are owned by everyone
+  for (const k of base.wardrobe) if (!s.wardrobe.includes(k)) s.wardrobe.push(k);
   return s;
 }
 

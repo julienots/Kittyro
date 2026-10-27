@@ -12,7 +12,11 @@ export interface PartOpts {
   pos?: Vec3;
   rot?: Vec3;
   scale?: Vec3;
+  /** Procedural surface pattern (see TEX), rendered by materials created with `textured`. */
+  tex?: number;
 }
+
+export { TEX } from './tex';
 
 const tmpColor = new THREE.Color();
 
@@ -59,6 +63,8 @@ const s = new THREE.Vector3();
 
 export class ModelBuilder {
   parts: THREE.BufferGeometry[] = [];
+  /** Default pattern for parts that don't specify one. */
+  tex = 0;
 
   private push(g: THREE.BufferGeometry, color: number | [number, number], o: PartOpts = {}): this {
     if (!g.index) {
@@ -69,6 +75,7 @@ export class ModelBuilder {
       g.setIndex(new THREE.BufferAttribute(idx, 1));
     }
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!g.attributes.aPat || o.tex !== undefined) g.setAttribute('aPat', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(o.tex ?? this.tex), 1));
     if (Array.isArray(color)) gradientize(g, color[0], color[1]);
     else colorize(g, color);
     e.set(...(o.rot ?? [0, 0, 0]));
@@ -78,7 +85,7 @@ export class ModelBuilder {
     m4.compose(v, q, s);
     g.applyMatrix4(m4);
     // drop attributes we don't need so merges stay compatible
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'aPat'].includes(k)) g.deleteAttribute(k);
     this.parts.push(g);
     return this;
   }
@@ -169,6 +176,41 @@ export class ModelBuilder {
   /** Add an already built geometry (must have position/normal). */
   geo(g: THREE.BufferGeometry, color: number | [number, number], o?: PartOpts): this {
     return this.push(g, color, o);
+  }
+
+  /** Add an already coloured geometry (e.g. another builder's output), transformed but NOT recoloured. */
+  merge(src: THREE.BufferGeometry, o: PartOpts = {}): this {
+    const g = src.clone();
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    if (!g.attributes.aPat) g.setAttribute('aPat', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(this.tex), 1));
+    e.set(...(o.rot ?? [0, 0, 0]));
+    q.setFromEuler(e);
+    v.set(...(o.pos ?? [0, 0, 0]));
+    s.set(...(o.scale ?? [1, 1, 1]));
+    m4.compose(v, q, s);
+    g.applyMatrix4(m4);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color', 'aPat'].includes(k)) g.deleteAttribute(k);
+    this.parts.push(g.index ? g : g);
+    return this;
+  }
+
+  /** Tapered limb/lock from a to b (radius ra at a, rb at b), rounded at a. */
+  limb(a: Vec3, b: Vec3, ra: number, rb: number, color: number | [number, number], seg = 8, capB = true): this {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+    const dir = B.clone().sub(A);
+    const len = Math.max(1e-4, dir.length());
+    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    const eul = new THREE.Euler().setFromQuaternion(quat);
+    const mid = A.clone().add(B).multiplyScalar(0.5);
+    this.push(new THREE.CylinderGeometry(rb, ra, len, seg, 1, true), color, { pos: [mid.x, mid.y, mid.z], rot: [eul.x, eul.y, eul.z] });
+    this.push(new THREE.SphereGeometry(ra, seg, Math.max(5, Math.floor(seg * 0.7))), Array.isArray(color) ? color[0] : color, { pos: a });
+    if (capB && rb > 0.004) this.push(new THREE.SphereGeometry(rb, seg, Math.max(5, Math.floor(seg * 0.7))), Array.isArray(color) ? color[1] : color, { pos: b });
+    return this;
+  }
+
+  /** Partial sphere (hair caps, hoods). theta measured from the top. */
+  shell(r: number, color: number | [number, number], thetaLen: number, o?: PartOpts, seg = 18, phiStart = 0, phiLen = Math.PI * 2): this {
+    return this.push(new THREE.SphereGeometry(r, seg, Math.max(6, Math.floor(seg * 0.6)), phiStart, phiLen, 0, thetaLen), color, o);
   }
 
   build(): THREE.BufferGeometry {
