@@ -188,6 +188,21 @@ export class Renderer {
     }
   }
 
+  /** Copy of the current frame (for cross-fading between regions). */
+  snapshot(): HTMLCanvasElement | null {
+    try {
+      this.render(); // same task as the copy: the drawing buffer is still intact
+      const src = this.renderer.domElement;
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(src.width / 2));
+      c.height = Math.max(1, Math.round(src.height / 2));
+      c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
+      return c;
+    } catch {
+      return null;
+    }
+  }
+
   info(): string {
     const i = this.renderer.info;
     return `${this.fps.toFixed(0)} fps · ${i.render.calls} calls · ${(i.render.triangles / 1000).toFixed(0)}k tris · x${this.pixelRatio.toFixed(2)}`;

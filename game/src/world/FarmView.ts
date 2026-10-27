@@ -44,7 +44,7 @@ export class FarmView {
   private off: () => void;
 
   constructor(private ctx: Ctx, private world: World, private particles: Particles) {
-    this.soil = new THREE.InstancedMesh(soilGeo(), vcMat(), 1600);
+    this.soil = new THREE.InstancedMesh(soilGeo(), vcMat({ groundNoise: 0.35 }), 1600);
     this.soil.receiveShadow = true;
     this.soil.count = 0;
     this.soil.frustumCulled = false;

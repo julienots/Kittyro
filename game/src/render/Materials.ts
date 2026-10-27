@@ -43,29 +43,34 @@ export function paintTexture(): THREE.CanvasTexture {
   g.fillRect(0, 0, 256, 256);
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // every shape is drawn at its 9 wrapped positions with identical parameters,
+  // so the texture tiles without any visible seam
+  const wrap = (draw: (ox: number, oy: number) => void) => {
+    for (const ox of [-256, 0, 256]) for (const oy of [-256, 0, 256]) draw(ox, oy);
+  };
   for (let i = 0; i < 900; i++) {
     const x = rnd() * 256, y = rnd() * 256, r = 2 + rnd() * 9;
     const v = 225 + Math.floor(rnd() * 30);
+    const rot = rnd() * Math.PI;
     g.fillStyle = `rgba(${v},${v},${v - 6},${0.25 + rnd() * 0.35})`;
-    g.beginPath();
-    g.ellipse(x, y, r * 1.6, r, rnd() * Math.PI, 0, Math.PI * 2);
-    g.fill();
-    // wrap
-    for (const [dx, dy] of [[256, 0], [-256, 0], [0, 256], [0, -256]]) {
+    wrap((ox, oy) => {
       g.beginPath();
-      g.ellipse(x + dx, y + dy, r * 1.6, r, 0, 0, Math.PI * 2);
+      g.ellipse(x + ox, y + oy, r * 1.6, r, rot, 0, Math.PI * 2);
       g.fill();
-    }
+    });
   }
   // tiny strokes
+  g.lineWidth = 1;
   for (let i = 0; i < 500; i++) {
     const x = rnd() * 256, y = rnd() * 256;
+    const dx = rnd() * 4 - 2, dy = -3 - rnd() * 3;
     g.strokeStyle = `rgba(255,255,240,${0.2 + rnd() * 0.3})`;
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + rnd() * 4 - 2, y - 3 - rnd() * 3);
-    g.stroke();
+    wrap((ox, oy) => {
+      g.beginPath();
+      g.moveTo(x + ox, y + oy);
+      g.lineTo(x + ox + dx, y + oy + dy);
+      g.stroke();
+    });
   }
   paintTex = new THREE.CanvasTexture(c);
   paintTex.wrapS = paintTex.wrapT = THREE.RepeatWrapping;
@@ -85,6 +90,7 @@ export interface MatOptions {
   snowCap?: boolean; // whitens up-facing surfaces when it snows
   textured?: boolean; // procedural surface patterns from the `aPat` attribute (planks, bricks, shingles...)
   clouds?: boolean; // drifting cloud shadows (default on)
+  groundNoise?: number; // world-space grain (continuous across meshes, so tiles never show seams)
 }
 
 const CLOUD_GLSL = `
@@ -156,6 +162,7 @@ function patch(mat: THREE.Material, o: MatOptions): void {
   const snow = !!o.snowCap;
   const tex = !!o.textured;
   const clouds = o.clouds !== false;
+  const grain = o.groundNoise ?? 0;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
       uTime: globalUniforms.uTime,
@@ -213,6 +220,12 @@ function patch(mat: THREE.Material, o: MatOptions): void {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
       diffuseColor.rgb *= cloudShadeMM(vWorldPosMM);`);
     }
+    if (grain) {
+      fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
+      { vec2 gp = vWorldPosMM.xz;
+        float gn = cNoiseMM(gp * 1.3) * 0.5 + cNoiseMM(gp * 4.7 + 3.1) * 0.3 + cNoiseMM(gp * 13.0 + 9.7) * 0.2;
+        diffuseColor.rgb *= 1.0 + (gn - 0.5) * ${grain.toFixed(3)}; }`);
+    }
     if (see) {
       fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
       if (uSeeThrough > 0.5) {
@@ -231,7 +244,7 @@ function patch(mat: THREE.Material, o: MatOptions): void {
     }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `mm_${wind}_${see}_${snow}_${tex}_${clouds}`;
+  mat.customProgramCacheKey = () => `mm_${wind}_${see}_${snow}_${tex}_${clouds}_${grain}`;
 }
 
 const cache = new Map<string, THREE.Material>();
@@ -296,7 +309,7 @@ export function terrainMat(): THREE.MeshToonMaterial {
   let m = cache.get(key) as THREE.MeshToonMaterial | undefined;
   if (m) return m;
   m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient(), map: paintTexture() });
-  patch(m, {});
+  patch(m, { groundNoise: 0.22 });
   cache.set(key, m);
   return m;
 }

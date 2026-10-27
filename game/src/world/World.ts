@@ -112,6 +112,7 @@ export class World {
     }
     if (this.terrain.water) this.root.add(this.terrain.water);
     if (this.terrain.lava) this.root.add(this.terrain.lava);
+    if (this.terrain.outskirts) this.root.add(this.terrain.outskirts);
     this.root.add(this.nodeBatch.group, this.propBatch.group, this.glowBatch.group, this.grassBatch.group);
     this.dynBlocked = new Uint8Array(this.layout.w * this.layout.d);
     this.buildProps();
@@ -161,6 +162,7 @@ export class World {
       this.terrain.skirt.geometry.dispose();
       this.terrain.water?.geometry.dispose();
       this.terrain.lava?.geometry.dispose();
+      this.terrain.outskirts?.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     }
     this.nodeBatch.dispose();
     this.propBatch.dispose();

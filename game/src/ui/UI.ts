@@ -387,6 +387,27 @@ export class UI {
     this.faderEl.classList.remove('on');
   }
 
+  /**
+   * Cross-fade: the last frame stays on screen while the next region loads, then
+   * dissolves into the new view (no blank screen between places).
+   */
+  async crossfade(snap: HTMLCanvasElement | null, fn: () => void | Promise<void>, label = ''): Promise<void> {
+    if (!snap) return this.fade(fn, label);
+    snap.className = 'xfade';
+    const tag = label ? h('div.xfade-label', null, label) : null;
+    this.root.append(snap, ...(tag ? [tag] : []));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await fn();
+    // let the new scene draw (and compile) a few frames under the picture
+    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    snap.classList.add('out');
+    tag?.classList.add('show');
+    setTimeout(() => snap.remove(), 900);
+    if (tag) setTimeout(() => tag.classList.remove('show'), 1700);
+    if (tag) setTimeout(() => tag.remove(), 2400);
+  }
+
   // ------------------------------------------------------------ panels
   openPanel(name: string, ...args: any[]): void {
     this.closeDialogue();

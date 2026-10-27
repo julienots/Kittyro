@@ -527,7 +527,7 @@ export class Game implements GameApi {
     if (region === 'farm' && st.time.day >= 2) setTimeout(() => this.ui.tip('hamlet_hint', '🏕️', 'Un sentier au sud…', 'Un sentier part du sud de votre ferme vers une clairière sauvage : Clairefontaine. Vous pourrez y fonder votre propre hameau et accueillir des villageois !'), 2500);
   }
 
-  travel(region: RegionId, anchor?: string): void {
+  travel(region: RegionId, anchor?: string, walkIn = false): void {
     if (this.title) return;
     const st = this.ctx.state;
     if (!st.regions[region].unlocked) {
@@ -538,10 +538,30 @@ export class Game implements GameApi {
     const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry' };
     audio.play('door');
     // a rare ad may play at this natural break (never mid-action)
-    ads.breakpoint().then(() => this.ui.fade(() => {
+    const outdoor = region !== 'house' && region !== 'mine';
+    const def = REGION_BY_ID[region];
+    ads.breakpoint().then(() => this.ui.crossfade(this.renderer.snapshot(), () => {
       this.loadRegion(region, anchor ?? defaults[region] ?? null);
+      if (walkIn && outdoor) this.walkIn();
       this.save();
-    }));
+    }, walkIn && outdoor && def ? `${def.icon} ${def.name}` : ''));
+  }
+
+  /** Arriving from a road: start at the border and walk into the region. */
+  private walkIn(): void {
+    const L = this.world.layout;
+    const px = this.player.pos.x, pz = this.player.pos.z;
+    const edges: [number, number, number][] = [[px, -1, 0], [L.w - px, 1, 0], [pz, 0, -1], [L.d - pz, 0, 1]];
+    edges.sort((a, b) => a[0] - b[0]);
+    const [dist, dx, dz] = edges[0];
+    if (dist > 6) return;
+    const back = Math.min(1.8, Math.max(0, dist - 0.6));
+    const sx = px + dx * back, sz = pz + dz * back;
+    if (back < 0.4 || this.world.isBlocked(sx, sz, 0.25)) return;
+    this.player.teleport(sx, sz, Math.atan2(-dx, -dz));
+    this.rig.snap(this.player.pos);
+    this.portalCooldown = 2.2;
+    this.player.walkTo(px, pz);
   }
 
   goMine(floor: number): void {
@@ -1526,7 +1546,7 @@ export class Game implements GameApi {
           this.player.teleport(px + inward.x * 1.5 + dx * 0, pz + inward.z * 1.5 + dz * 0);
           return;
         }
-        this.travel(p.to, p.anchor);
+        this.travel(p.to, p.anchor, true);
         return;
       }
     }

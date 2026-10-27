@@ -350,8 +350,14 @@ export function cropGeo(cropId: string, stage: number, dormant = false): THREE.B
 
 export function soilGeo(): THREE.BufferGeometry {
   const b = mb();
-  b.rbox(0.94, 0.08, 0.94, 0xffffff, { pos: [0, 0.03, 0] }, 0.5);
-  for (let i = 0; i < 3; i++) b.box(0.8, 0.03, 0.06, 0xd8d8d8, { pos: [0, 0.075, -0.28 + i * 0.28] });
+  // full-tile slab + furrows running edge to edge: neighbouring plots join into
+  // one continuous field instead of a grid of separate squares
+  b.box(1.0, 0.08, 1.0, 0xffffff, { pos: [0, 0.03, 0] });
+  for (let i = 0; i < 3; i++) {
+    const z = -1 / 3 + i / 3;
+    b.box(1.0, 0.035, 0.13, 0xe6e6e6, { pos: [0, 0.085, z] });
+    b.box(1.0, 0.02, 0.05, 0xc4c4c4, { pos: [0, 0.075, z + 1 / 6] });
+  }
   return b.build();
 }
 
