@@ -45,6 +45,31 @@ const FILES = import.meta.glob('../../models/**/*.glb', { eager: true, query: '?
 const JSONS = import.meta.glob('../../models/*.json', { eager: true, import: 'default' }) as Record<string, unknown>;
 
 const overrides = new Map<string, THREE.BufferGeometry>();
+
+/** Settings for a rigged character base (models/character/player.glb), in models.json. */
+export interface CharacterConfig extends ModelConfig {
+  /** height of the character in metres (default 1.32, like the built-in one) */
+  height?: number;
+  /** the model already has hair: don't add the game's hairstyles (default: add them) */
+  hair?: boolean;
+  /** move / resize the game's hair & hats on the head: [x, y, z] metres, scale multiplier */
+  hairOffset?: [number, number, number];
+  hairScale?: number;
+  /** recolour skin / top / trousers / shoes from the creator (default true) */
+  recolor?: boolean;
+  /** skin colour used in the texture (hex string), for skin tone changes */
+  refSkin?: string;
+  /** relative heights (0 = feet, 1 = top of head) where the top stops, the trousers stop */
+  topMax?: number;
+  bottomMax?: number;
+  shoesMax?: number;
+}
+const characters = new Map<string, { scene: THREE.Group; animations: THREE.AnimationClip[]; cfg: CharacterConfig }>();
+
+/** The rigged character base dropped in models/character/ (e.g. "player"), or null. */
+export function characterBase(name = 'player'): { scene: THREE.Group; animations: THREE.AnimationClip[]; cfg: CharacterConfig } | null {
+  return characters.get(name) ?? null;
+}
 const worldModels = new Map<string, THREE.Group>();
 let configs: Record<string, ModelConfig> = {};
 let placements: Placement[] = [];
@@ -212,7 +237,10 @@ export function loadExternalModels(): Promise<void> {
       try {
         const gltf = await loader.loadAsync(url);
         const cfg = configs[name] ?? {};
-        if (folder === 'world') {
+        if (folder === 'character') {
+          characters.set(name, { scene: gltf.scene, animations: gltf.animations ?? [], cfg: (configs[name] ?? {}) as CharacterConfig });
+          report.push(`character:${name}`);
+        } else if (folder === 'world') {
           const holder = new THREE.Group();
           const scene = gltf.scene;
           holder.add(scene);
@@ -235,7 +263,7 @@ export function loadExternalModels(): Promise<void> {
       }
     }));
     if (report.length) console.info('[models]', report.join(', '));
-    if (typeof window !== 'undefined') (window as any).__models = { report, placements, configs, world: [...worldModels.keys()], overrides: [...overrides.keys()] };
+    if (typeof window !== 'undefined') (window as any).__models = { report, placements, configs, world: [...worldModels.keys()], overrides: [...overrides.keys()], characters: [...characters.keys()] };
   })();
   return loaded;
 }

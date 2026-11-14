@@ -81,7 +81,7 @@ export class RemotePlayers {
   }
 
   private make(p: Peer): Avatar {
-    const rig = buildCharacter(p.look, { outline: true });
+    const rig = buildCharacter(p.look, { outline: true, player: true });
     const group = new THREE.Group();
     group.add(rig.root);
     const tag = textSprite(p.name, { bg: 'rgba(255,248,236,0.92)', fg: '#5a4030', size: 40 });

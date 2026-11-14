@@ -4,6 +4,7 @@ import { vcMat, outlineMat, basicMat } from '../render/Materials';
 import type { Appearance } from '../state/types';
 import { SKIN_TONES, HAIR_COLORS, EYE_COLORS } from '../data/wardrobe';
 import { TOOL_TIER_COLORS } from '../data/constants';
+import { buildTripoCharacter } from './TripoCharacter';
 
 /**
  * Stylised character with believable proportions: a slightly large head (cosy
@@ -89,7 +90,7 @@ function braid(b: ModelBuilder, color: number, start: Vec3, dir: Vec3, n: number
   b.limb(e, [e[0], e[1] - 0.06, e[2]], r * 0.5, r * 0.15, color, 6);
 }
 
-function buildHair(b: ModelBuilder, d: ModelBuilder, style: number, color: number): void {
+export function buildHair(b: ModelBuilder, d: ModelBuilder, style: number, color: number): void {
   const c2 = darker(color, 0.82);
   switch (style) {
     case 0: // short & neat
@@ -235,7 +236,7 @@ function buildHair(b: ModelBuilder, d: ModelBuilder, style: number, color: numbe
 
 // ------------------------------------------------------------------ hats & head accessories
 /** Hats were authored for a 0.33 head; they are built at that scale and merged scaled down. */
-function buildHat(hat: string, color: number): THREE.BufferGeometry | null {
+export function buildHat(hat: string, color: number): THREE.BufferGeometry | null {
   const b = mb();
   const top = 0.33 * 0.85;
   switch (hat) {
@@ -327,7 +328,7 @@ function buildHat(hat: string, color: number): THREE.BufferGeometry | null {
   return b.build();
 }
 
-function buildHeadAccessory(b: ModelBuilder, acc: string): void {
+export function buildHeadAccessory(b: ModelBuilder, acc: string): void {
   if (acc === 'glasses') {
     for (const sx of [-1, 1]) b.torus(0.046, 0.007, 0x3a2a22, { pos: [sx * 0.075, 0.0, R * 0.98] });
     b.box(0.05, 0.008, 0.008, 0x3a2a22, { pos: [0, 0.008, R * 0.99] });
@@ -445,7 +446,12 @@ function hull(src: THREE.BufferGeometry, t: number): THREE.BufferGeometry {
   return g;
 }
 
-export function buildCharacter(look: Appearance, opts: { outline?: boolean; scale?: number } = {}): CharacterRig {
+export function buildCharacter(look: Appearance, opts: { outline?: boolean; scale?: number; player?: boolean } = {}): CharacterRig {
+  // a rigged base dropped in game/models/character/player.glb replaces the built-in body
+  if (opts.player) {
+    const t = buildTripoCharacter(look, opts);
+    if (t) return t;
+  }
   const skin = SKIN_TONES[look.skin % SKIN_TONES.length];
   const hair = HAIR_COLORS[look.hairColor % HAIR_COLORS.length];
   const mat = vcMat();

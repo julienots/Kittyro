@@ -162,3 +162,7 @@ faucille couchée, la lame balayant vers l'avant-gauche.
 - **Dépôt de modèles 3D** (`game/models/`) : déposez des `.glb` pour remplacer arbres, rochers,
   meubles, décorations, bâtiments et structures, ou pour poser vos propres modèles n'importe où
   (`placements.json`). Vérification et build automatiques par GitHub Actions (« Modèles 3D »).
+- **Personnage principal sur base 3D** (`game/models/character/player.glb`, ex. généré avec Tripo et
+  riggé) : le jeu anime le squelette avec ses propres animations (reciblage automatique, T/A-pose),
+  re-teinte peau / haut / bas / chaussures depuis le créateur et pose les coiffures, chapeaux et
+  accessoires du jeu sur l'os de la tête. Sans fichier, le héros procédural reste utilisé.

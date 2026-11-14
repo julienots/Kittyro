@@ -77,7 +77,7 @@ export class CharacterPreview {
     if (key === this.lookKey) return;
     this.lookKey = key;
     if (this.rig) this.holder.remove(this.rig.root);
-    this.rig = buildCharacter(look, { outline: true });
+    this.rig = buildCharacter(look, { outline: true, player: true });
     this.holder.add(this.rig.root);
     if (this.tool) this.rig.toolSlot.add(buildToolMesh(this.tool, 1));
   }

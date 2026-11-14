@@ -26,7 +26,9 @@ const walk = (dir) => {
     if (size > MAX) problems.push(`${rel}: trop lourd (${(size / 1048576).toFixed(1)} Mo > 15 Mo)`);
     const head = readFileSync(p).subarray(0, 4).toString('latin1');
     if (head !== 'glTF') problems.push(`${rel}: ce n'est pas un .glb valide (en-tête "${head}")`);
-    if (!rel.startsWith('override/') && !rel.startsWith('world/')) problems.push(`${rel}: placez-le dans models/override/ ou models/world/`);
+    if (!rel.startsWith('override/') && !rel.startsWith('world/') && !rel.startsWith('character/')) problems.push(`${rel}: placez-le dans models/override/, models/world/ ou models/character/`);
+    if (rel.startsWith('character/') && name !== 'player') problems.push(`${rel}: le personnage doit s'appeler character/player.glb`);
+    if (rel.startsWith('character/') && !readFileSync(p).includes('"skins"')) problems.push(`${rel}: ce modèle n'est pas riggé (pas de squelette) — utilisez « Rig » dans Tripo avant l'export`);
     found.push(`${rel} (${(size / 1024).toFixed(0)} Ko)`);
   }
 };

@@ -72,7 +72,7 @@ export class Player {
   rebuild(): void {
     const old = this.rig;
     if (old) this.root.remove(old.root);
-    this.rig = buildCharacter(this.ctx.state.player.look, { outline: this.outline });
+    this.rig = buildCharacter(this.ctx.state.player.look, { outline: this.outline, player: true });
     this.rigScale = this.rig.root.scale.x;
     this.root.add(this.rig.root);
     this.toolMesh = null;
