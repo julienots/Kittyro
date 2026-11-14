@@ -22,6 +22,7 @@ import { FPHands } from '../entities/FPHands';
 import { EntityManager, type WildAgent, type VillagerAgent } from '../entities/Agents';
 import { Input } from '../input/Input';
 import { audio } from '../audio/Audio';
+import { loadExternalModels } from '../models/External';
 import { UI } from '../ui/UI';
 import { h, fmt } from '../ui/dom';
 import { titleScreen, creatorScreen } from '../ui/screens';
@@ -67,7 +68,7 @@ interface ActionTarget {
   z?: number;
 }
 
-const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home', hamlet: 'village' };
+const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home', hamlet: 'village', highlands: 'forest' };
 
 export class Game implements GameApi {
   settings: Settings;
@@ -168,7 +169,7 @@ export class Game implements GameApi {
     return this.world?.region ?? 'farm';
   }
   fps(): string {
-    return this.renderer.info();
+    return `${this.renderer.info()} · ${this.world.region} x${this.player.pos.x.toFixed(1)} z${this.player.pos.z.toFixed(1)}`;
   }
   setPaused(p: boolean): void {
     this.paused = Math.max(0, this.paused + (p ? 1 : -1));
@@ -197,7 +198,7 @@ export class Game implements GameApi {
   // ------------------------------------------------------------ boot
   async boot(): Promise<void> {
     audio.volumes = { music: this.settings.music, sfx: this.settings.sfx, ambience: this.settings.ambience };
-    const existing = await this.saves.load();
+    const [existing] = await Promise.all([this.saves.load(), loadExternalModels()]);
     this.hasSave = !!existing;
     // a living demo farm behind the title screen
     const demo = createNewGame('', '', undefined, 777);
@@ -254,6 +255,12 @@ export class Game implements GameApi {
     this.input.onDrag = (nx, ny, phase) => this.placement.drag(nx, ny, phase);
     this.ui.onAction = () => this.primaryAction();
     this.ui.onTool = () => this.useTool();
+    this.ui.onJump = () => this.jump();
+    this.player.onLand = (k) => {
+      if (k > 0.5) this.rig.shake(0.05 * k, 0.12);
+      audio.play('step', { tile: this.world.tile(this.player.pos.x, this.player.pos.z) });
+    };
+    this.player.onSplash = () => audio.play('splash');
   }
 
   private tileFree(x: number, z: number, allowed: number[], debrisOk = false): boolean {
@@ -535,6 +542,7 @@ export class Game implements GameApi {
       village: ['🏘️', 'Willowbrook', 'Les bâtiments en ruine se restaurent avec des matériaux : approchez-vous et touchez 🔨. Parlez aussi aux habitants chaque jour !'],
       mine: ['⛏️', 'Les mines', 'Cassez les rochers à la pioche : l\'un d\'eux cache l\'échelle vers l\'étage suivant. Tous les 5 étages, un ascenseur !'],
       house: ['🏡', 'Chez vous', 'Le lit permet de dormir jusqu\'au lendemain matin. Touchez 🔨 pour décorer et déplacer vos meubles.'],
+      highlands: ['⛰️', 'Les Hautes Terres', 'Une immense contrée à explorer librement ! Maj ou 🏃 pour courir, Espace ou ⤴ pour sauter (par-dessus les ruisseaux), et vous pouvez nager dans le grand lac : un trésor attend sur l\'île…'],
       woods: ['🌲', 'Whispering Woods', 'Les créatures sont timides : avancez lentement (sans courir) pour les observer.'],
     };
     const t = tips[region];
@@ -550,7 +558,7 @@ export class Game implements GameApi {
       return;
     }
     // default arrival anchors
-    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry' };
+    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry', highlands: 'farm_entry' };
     audio.play('door');
     // a rare ad may play at this natural break (never mid-action)
     const outdoor = region !== 'house' && region !== 'mine';
@@ -714,6 +722,7 @@ export class Game implements GameApi {
     const fp = this.rig.view === 'fp';
     if (fp) this.player.rig.root.visible = this.ui.panelName === 'wardrobe';
     this.player.lockFacing = fp && !this.title ? Math.atan2(this.rig.forward.x, this.rig.forward.z) : null;
+    this.player.sprint = this.sprintToggle || this.input.isDown('shift');
     const prev = this.player.pos.clone();
     this.player.update(active ? dt : 0, mx, mz, this.sky.state.night);
     st.stats.walked = (st.stats.walked ?? 0) + prev.distanceTo(this.player.pos);
@@ -739,10 +748,18 @@ export class Game implements GameApi {
     this.sky.overcast += ((weather === 'rain' ? 0.7 : weather === 'storm' ? 1 : weather === 'cloudy' ? 0.45 : weather === 'fog' ? 0.6 : weather === 'snow' ? 0.5 : 0) - this.sky.overcast) * Math.min(1, dt);
     this.sky.storm = weather === 'storm' ? 1 : 0;
     this.sky.update(st.time.minute, this.elapsed, this.player.pos, this.renderer.scene);
+    globalUniforms.uPlayerPos.value.copy(this.player.pos);
+    {
+      const outdoorG = !this.world.layout.indoor;
+      this.renderer.grade.warm = outdoorG ? this.sky.warmth(st.time.minute) * (1 - this.sky.overcast * 0.7) : this.world.region === 'house' ? 0.35 : 0;
+      this.renderer.grade.night = this.world.region === 'house' ? 0 : this.sky.state.night;
+      this.renderer.grade.time = this.elapsed;
+    }
     const fog = this.renderer.scene.fog as THREE.Fog;
     const fogK = weather === 'fog' ? 0.45 : weather === 'snow' || weather === 'rain' ? 0.75 : 1;
-    fog.near = (this.world.region === 'mine' ? 22 : 42) * fogK;
-    fog.far = (this.renderer.profile.drawDistance + 20) * fogK;
+    const zoomOut = this.rig.view === 'fp' ? 0.6 : Math.max(0, this.rig.zoom - 1);
+    fog.near = (this.world.region === 'mine' ? 22 : 42 + zoomOut * 28) * fogK;
+    fog.far = (this.renderer.profile.drawDistance + 20 + zoomOut * 40) * fogK;
     globalUniforms.uSnow.value = this.world.layout.seasonal && seasonOfDay(st.time.day) === 'winter' ? 1 : this.world.region === 'frosty' ? 1 : 0;
     updateGlow(this.sky.state.night);
     updateWindows(this.sky.state.night);
@@ -843,6 +860,7 @@ export class Game implements GameApi {
 
   /** Everything you can interact with, sorted by distance (facing bonus). */
   private findTarget(): ActionTarget | null {
+    if (this.player.swimming) return { icon: '🏊', label: 'Nager', run: () => this.ui.toast('Regagnez la rive pour agir.', '🏊') };
     const st = this.ctx.state;
     const px = this.player.pos.x, pz = this.player.pos.z;
     const fx = Math.sin(this.player.facing), fz = Math.cos(this.player.facing);
@@ -979,6 +997,7 @@ export class Game implements GameApi {
       case 'elevator': return { icon: '🛗', label: 'Ascenseur', run: () => this.ui.openPanel('elevator') };
       case 'bridge': return { icon: '🌉', label: 'Pont cassé', run: () => this.brokenBridge() };
       case 'secret': return { icon: it.icon, label: it.label, run: () => this.secret(it.data.secret, it.label) };
+      case 'lookout': return { icon: it.icon, label: it.label, run: () => this.panorama(it.data.secret, it.label) };
       case 'camp': return { icon: '⛺', label: 'Se reposer', run: () => { this.player.celebrate(); st.player.buffs.luck = Math.max(st.player.buffs.luck ?? 0, st.absMinute) + 60; this.ui.toast('Un moment au coin du feu… +Chance', '🔥', 'good'); } };
       case 'shrine': return { icon: '💜', label: 'Prier', run: () => this.shrine() };
       case 'fountain': return { icon: '⛲', label: 'Faire un vœu', run: () => this.fountain() };
@@ -1274,7 +1293,7 @@ export class Game implements GameApi {
       return;
     }
     rs.secrets.push(id);
-    const rewards: Record<string, [string, number]> = { grove: ['moonbloom', 0], igloo: ['warm_coat', 0], lighthouse: ['pearl', 2], spring: ['ember_core', 1], waterfall: ['aquamarine', 2] };
+    const rewards: Record<string, [string, number]> = { grove: ['moonbloom', 0], igloo: ['warm_coat', 0], lighthouse: ['pearl', 2], spring: ['ember_core', 1], waterfall: ['aquamarine', 2], stones: ['crystal_shard', 3], tower: ['geode', 3], lookout: ['aquamarine', 1], island: ['pearl', 3], windmill: ['geode', 2] };
     const [it, q] = rewards[id] ?? ['geode', 1];
     if (it === 'moonbloom') this.ctx.inventory.add('seed_moonbloom', 2, true);
     else if (it === 'warm_coat') this.ctx.inventory.add('frost_crystal', 3, true);
@@ -1283,6 +1302,21 @@ export class Game implements GameApi {
     audio.play('discover');
     this.ui.confetti();
     this.ui.reveal(() => h('div', null, h('span.em', null, '✨'), h('h2', null, 'Secret découvert !'), h('p', null, `${label} — vous trouvez un petit trésor et 10 💎.`)));
+  }
+
+  /** Climb the lookout: the camera pulls far back for a sweeping view of the Highlands. */
+  private panorama(id: string, label: string): void {
+    const z0 = this.rig.zoomTarget, p0 = this.rig.pitchTarget;
+    this.rig.setZoom(2.4);
+    this.rig.pitchTarget = 0.42;
+    this.rig.rotate(Math.PI / 2);
+    audio.play('discover');
+    this.ui.toast('Quelle vue ! Glissez pour tourner la caméra.', '🔭');
+    setTimeout(() => {
+      this.rig.setZoom(z0);
+      this.rig.pitchTarget = p0;
+    }, 6500);
+    if (!this.ctx.state.regions[this.world.region].secrets.includes(id)) setTimeout(() => this.secret(id, label), 2500);
   }
 
   private shrine(): void {
@@ -1372,6 +1406,10 @@ export class Game implements GameApi {
       return;
     }
     if (this.player.busy) return;
+    if (this.player.swimming) {
+      this.ui.toast('Impossible en nageant — regagnez la rive !', '🏊', 'warn');
+      return;
+    }
     const t = this.current ?? this.findTarget();
     if (t) t.run();
     else this.useTool();
@@ -1398,6 +1436,7 @@ export class Game implements GameApi {
   /** Use the equipped tool on the area in front of the player. */
   useTool(): void {
     if (this.title || this.player.busy || this.ui.modalOpen) return;
+    if (this.player.swimming) return;
     audio.unlock();
     const st = this.ctx.state;
     const tool = st.player.activeTool;
@@ -1525,9 +1564,24 @@ export class Game implements GameApi {
     if (WALKABLE[this.world.tile(p.x, p.z)]) this.player.walkTo(p.x, p.z);
   }
 
+  sprintToggle = false;
+
+  /** Mobile sprint button: toggles running on/off. */
+  toggleSprint(): void {
+    this.sprintToggle = !this.sprintToggle;
+    this.ui.sprintBtn?.classList.toggle('on', this.sprintToggle);
+    audio.play('click');
+  }
+
+  jump(): void {
+    if (this.title || this.ui.modalOpen || this.placement.active || this.cutscene || this.fishing.active) return;
+    if (this.player.jump()) audio.play('pop');
+  }
+
   private onKey(k: string): void {
     if (this.title) return;
-    if (k === 'e' || k === ' ' || k === 'enter') this.primaryAction();
+    if (k === ' ') this.jump();
+    else if (k === 'e' || k === 'enter') this.primaryAction();
     else if (k === 'f') this.useTool();
     else if (k === 'r' || k === 'tab') {
       const tools: ToolId[] = ['hoe', 'can', 'sickle', 'axe', 'pickaxe', 'rod'];

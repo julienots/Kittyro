@@ -97,7 +97,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: none; }
 .icon-btn.labeled small { font-size: 9.5px; font-weight: 600; color: var(--ink2); margin-top: 2px; max-width: 100%; overflow: hidden; white-space: nowrap; }
 .badge { position: absolute; top: -5px; right: -5px; background: var(--rose); color: #fff; font-size: 12px; font-weight: 600; min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
 
-.hud-actions { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(18px + var(--safe-b)); width: 210px; height: 200px; }
+.hud-actions { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(18px + var(--safe-b)); width: 270px; height: 200px; }
 .left-handed .hud-actions { right: auto; left: calc(18px + var(--safe-l)); }
 .act-btn {
   position: absolute; right: 0; bottom: 0; width: 104px; height: 104px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0%, #fff8ec 40%, #ffe7c4 100%);
@@ -120,6 +120,14 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: none; }
 .left-handed .act-btn { right: auto; left: 0; }
 .left-handed .seed-btn { right: auto; left: 106px; }
 .left-handed .ride-btn { right: auto; left: 20px; }
+.jump-btn, .sprint-btn { position: absolute; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid #fff; color: var(--ink2); }
+.jump-btn { right: 202px; bottom: 4px; width: 62px; height: 62px; font-size: 26px; }
+.sprint-btn { right: 178px; bottom: 84px; width: 52px; height: 52px; font-size: 22px; }
+.jump-btn small, .sprint-btn small { font-size: 9px; font-weight: 600; line-height: 1; }
+.jump-btn.pressed { transform: scale(.9); }
+.sprint-btn.on { background: #ffe7a8; border-color: #ffc94a; }
+.left-handed .jump-btn { right: auto; left: 202px; }
+.left-handed .sprint-btn { right: auto; left: 178px; }
 .water-meter { position: absolute; right: 120px; bottom: 0px; width: 66px; height: 6px; background: var(--cream2); border-radius: 3px; overflow: hidden; }
 .water-meter i { display: block; height: 100%; background: #6cc0f0; }
 

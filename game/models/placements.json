@@ -1,0 +1,4 @@
+[
+  { "model": "statue_chat", "region": "highlands", "x": 73.5, "z": 48.5, "rot": 200 },
+  { "model": "statue_chat", "region": "farm", "x": 6.5, "z": 30.5, "rot": 90, "scale": 0.7 }
+]

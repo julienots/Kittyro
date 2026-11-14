@@ -60,6 +60,7 @@ export class NpcAgent extends Mover {
   private walkT = 0;
   private blink = 1;
   private idleT = 0;
+  private nearT = 0;
   currentAnchor = '';
   talking = 0;
   bubble: THREE.Sprite | null = null;
@@ -78,7 +79,17 @@ export class NpcAgent extends Mover {
     const rig = this.rig;
     this.pos.y = this.world.heightAt(this.pos.x, this.pos.z);
     rig.root.position.copy(this.pos);
-    const near = player.distanceTo(this.pos) < 3;
+    const dist = player.distanceTo(this.pos);
+    const near = dist < 3;
+    this.nearT = near ? this.nearT + dt : 0;
+    // heads follow the player when they pass by (even while walking)
+    {
+      let rel = Math.atan2(player.x - this.pos.x, player.z - this.pos.z) - this.facing;
+      while (rel > Math.PI) rel -= Math.PI * 2;
+      while (rel < -Math.PI) rel += Math.PI * 2;
+      const look = dist < 5.5 && Math.abs(rel) < 2 ? Math.max(-0.9, Math.min(0.9, rel)) : 0;
+      rig.head.rotation.y = damp(rig.head.rotation.y, look, 5, dt);
+    }
     if (!this.moving && (near || this.talking > 0)) {
       this.facing = angleLerp(this.facing, Math.atan2(player.x - this.pos.x, player.z - this.pos.z), Math.min(1, dt * 5));
     }
@@ -95,7 +106,14 @@ export class NpcAgent extends Mover {
       rig.armL.rotation.x = -s * 0.6;
       rig.armR.rotation.x = s * 0.6;
       rig.body.position.y = Math.abs(Math.cos(this.walkT)) * 0.05;
+      rig.body.rotation.y = Math.sin(this.walkT) * 0.07;
+      rig.body.rotation.z = Math.sin(this.walkT) * 0.03;
+      rig.armR.rotation.z = damp(rig.armR.rotation.z, 0, 8, dt);
     } else {
+      rig.body.rotation.y = damp(rig.body.rotation.y, 0, 6, dt);
+      rig.body.rotation.z = damp(rig.body.rotation.z, 0, 6, dt);
+      const br = Math.sin(this.idleT * 2);
+      rig.body.scale.set(1 + br * 0.008, 1 - br * 0.004, 1 + br * 0.008);
       this.idleT += dt;
       rig.legL.rotation.x = damp(rig.legL.rotation.x, 0, 8, dt);
       rig.legR.rotation.x = damp(rig.legR.rotation.x, 0, 8, dt);
@@ -103,7 +121,7 @@ export class NpcAgent extends Mover {
       rig.body.position.y = Math.sin(this.idleT * 2) * 0.012;
       // wave when the player approaches, gesture while talking
       if (this.talking > 0) rig.armR.rotation.x = -0.8 + Math.sin(this.idleT * 6) * 0.3;
-      else if (near) rig.armR.rotation.z = damp(rig.armR.rotation.z, 2.6 + Math.sin(this.idleT * 10) * 0.25, 6, dt);
+      else if (near && this.nearT < 1.8) rig.armR.rotation.z = damp(rig.armR.rotation.z, 2.6 + Math.sin(this.idleT * 10) * 0.25, 6, dt);
       else {
         rig.armR.rotation.z = damp(rig.armR.rotation.z, 0, 6, dt);
         rig.armR.rotation.x = damp(rig.armR.rotation.x, 0, 6, dt);

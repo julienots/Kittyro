@@ -4,6 +4,7 @@
 #
 #   ./build.sh            # web build + debug + release APK + AAB
 #   SKIP_WEB=1 ./build.sh # reuse game/dist
+#   DEBUG_ONLY=1 ./build.sh # only the debug APK (no release key needed)
 #
 # Release signing: android/release.keystore + android/release.properties
 # (created automatically on first run, never committed — keep a backup!).
@@ -52,14 +53,14 @@ if [ ! -f "$DEBUG_KS" ]; then
 fi
 REL_PROPS=$HERE/release.properties
 REL_KS=$HERE/release.jks
-if [ ! -f "$REL_KS" ]; then
+if [ -z "${DEBUG_ONLY:-}" ] && [ ! -f "$REL_KS" ]; then
   PASS=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)
   keytool -genkeypair -keystore "$REL_KS" -storepass "$PASS" -keypass "$PASS" -alias mossy \
     -dname "CN=Mossy Meadows,O=Mossy Meadows,C=FR" -keyalg RSA -keysize 4096 -validity 10000 >/dev/null 2>&1
   printf 'storePassword=%s\nkeyAlias=mossy\n' "$PASS" > "$REL_PROPS"
   echo "   (new release key generated: android/release.jks — back it up!)"
 fi
-REL_PASS=$(grep storePassword "$REL_PROPS" | cut -d= -f2)
+REL_PASS=$([ -f "$REL_PROPS" ] && grep storePassword "$REL_PROPS" | cut -d= -f2 || true)
 
 sign_apk() { # in out ks pass alias
   "$BT/zipalign" -p -f 4 "$1" "$OUT/aligned.apk"
@@ -72,6 +73,8 @@ echo "==> Debug APK"
 link "$OUT/debug-unsigned.apk" --debug-mode
 add_dex "$OUT/debug-unsigned.apk"
 sign_apk "$OUT/debug-unsigned.apk" "$DIST/mossy-meadows-$VERSION_NAME-debug.apk" "$DEBUG_KS" android androiddebugkey
+
+if [ -n "${DEBUG_ONLY:-}" ]; then echo "==> Done (debug only)"; ls -la "$DIST"; exit 0; fi
 
 echo "==> Release APK"
 link "$OUT/release-unsigned.apk"

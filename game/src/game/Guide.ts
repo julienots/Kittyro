@@ -34,7 +34,7 @@ export interface GuideInfo {
 
 /** Which regions connect to which (doors, trails, mine entrance). */
 const LINKS: Record<RegionId, RegionId[]> = {
-  farm: ['village', 'woods', 'mountains', 'hamlet', 'house'],
+  farm: ['village', 'woods', 'mountains', 'hamlet', 'house', 'highlands'],
   village: ['farm', 'coast', 'ember'],
   woods: ['farm'],
   mountains: ['farm', 'frosty', 'mine'],
@@ -42,6 +42,7 @@ const LINKS: Record<RegionId, RegionId[]> = {
   frosty: ['mountains'],
   ember: ['village'],
   hamlet: ['farm'],
+  highlands: ['farm'],
   house: ['farm'],
   mine: ['mountains'],
 };

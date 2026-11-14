@@ -10,6 +10,8 @@
 | `node e2e/explore.mjs` | Visite des 7 régions extérieures, apparition forcée de créatures/insectes/animaux sauvages, observation, artisanat, placement d'un canapé dans la maison. |
 | `node e2e/hamlet.mjs [url] [WxH]` | Parcours du hameau : sentier ferme → Clairefontaine, construction via la vraie UI de placement, arrivée du 1er villageois, nuit → production, registre (bouton d'action) → « Tout récupérer », dialogue villageois + souhait exaucé, menus, passants à Willowbrook (8 vérifications). |
 | `node e2e/camera.mjs [url]` | Vrais gestes de souris : glisser le bâtiment fantôme, flèche de précision, rotation, construction d'un poulailler tourné, débris non bloquants, rotation caméra au glisser, vue 1ʳᵉ personne (marche, hache), **deux doigts simultanés (joystick + regard)** et retour (9 vérifications). |
+| `node e2e/freedom.mjs [url]` | v1.6 : voyage vers les Hautes Terres (120×108), statue personnalisée chargée depuis `game/models/`, nage dans le lac, saut au clavier (décollage + atterrissage), course (Maj), retour par le sentier ouest de la ferme. |
+| `node tools/check-models.mjs` | Validation des modèles 3D déposés (format `.glb`, nom, poids, JSON, placements). |
 | `node e2e/look.mjs <url> <prefix> "<js>;;shot;;…"` | Captures d'écran scriptées pour vérifier un rendu. |
 | `node e2e/store.mjs [url] [dossier]` | Captures 1920×1080 pour la fiche Play Store (ferme, hameau, registre, village au crépuscule, 1ʳᵉ personne, carte) dans `store/screenshots`. |
 | `node e2e/mobile.mjs <url>` | Build de production sur viewport téléphone paysage & portrait avec événements tactiles (joystick). |
@@ -17,7 +19,9 @@
 Les scripts e2e attendent le serveur de dev (`npm run dev -- --port 5173`) ou le build servi
 (`npx http-server game/dist -p 5180`), et Chromium (`/opt/pw-browsers`).
 
-Résultat de la dernière exécution (v1.5.0) : 34/34 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 9/9 caméra & placement, 0 erreur
+Résultat v1.6.0 : 34/34 tests unitaires, 10/10 vérifications `freedom.mjs`, remplacement d'un modèle (`override/tree_oak.glb`) contrôlé à l'écran, 0 erreur JavaScript.
+
+Résultat v1.5.0 : 34/34 tests unitaires, 20/20 vérifications systèmes, 8/8 hameau, 9/9 caméra & placement, 0 erreur
 JavaScript sur l'ensemble des parcours.
 
 ## Android

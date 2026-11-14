@@ -40,8 +40,8 @@ export const FARM = {
 export function createNewGame(name = 'Sacha', farmName = 'Ferme Moussue', look: Appearance = DEFAULT_LOOK, seed = Date.now()): GameState {
   const now = Date.now();
   const regions = {} as Record<RegionId, RegionState>;
-  for (const id of ['farm', 'village', 'woods', 'mountains', 'coast', 'frosty', 'ember', 'mine', 'house', 'hamlet'] as RegionId[]) {
-    regions[id] = region(id === 'farm' || id === 'village' || id === 'house' || id === 'hamlet');
+  for (const id of ['farm', 'village', 'woods', 'mountains', 'coast', 'frosty', 'ember', 'mine', 'house', 'hamlet', 'highlands'] as RegionId[]) {
+    regions[id] = region(id === 'farm' || id === 'village' || id === 'house' || id === 'hamlet' || id === 'highlands');
   }
   regions.farm.visited = true;
 

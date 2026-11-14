@@ -141,3 +141,24 @@ faucille couchée, la lame balayant vers l'avant-gauche.
 - **Multijoueur local sans serveur** : un téléphone héberge sur le Wi-Fi, les autres le trouvent
   (diffusion UDP) ou entrent son IP ; chacun garde sa ferme, on se voit dans la même région avec
   sa tenue, on discute (chat + phrases rapides) et on fait des émotes. Rien ne sort du réseau local.
+
+## v1.6.0 — Hautes Terres, liberté, shaders & modèles 3D personnalisés
+- **Les Hautes Terres** : nouvelle région immense (120 × 108 cases, plus de 4 fois la ferme) à l'ouest
+  de la ferme : collines, grand lac avec une île au trésor, rivière née d'une cascade, pont de pierre,
+  tour en ruine, cercle de pierres, moulin dont les ailes tournent, tour de guet avec panorama,
+  camp, forêts, prairies de fleurs sauvages, coffres et 5 nouveaux secrets.
+- **Liberté de mouvement** : course (Maj / bouton 🏃), saut (Espace / bouton ⤴) qui franchit les
+  ruisseaux, **nage** dans les lacs, rivières et la mer (brasse, éclaboussures, ronds dans l'eau),
+  zoom et inclinaison de caméra bien plus larges, distance d'affichage augmentée.
+- **Animations** : cycle marche → course (foulée, bras, inclinaison), virages penchés, étirement /
+  écrasement au saut et à l'atterrissage, respiration, petites animations d'attente (regarder autour,
+  s'étirer, taper du pied), nage et surplace ; les villageois suivent le joueur du regard, se
+  balancent en marchant et ne saluent plus en boucle.
+- **Rendu** : post-traitement complet (bloom, roll-off des hautes lumières, étalonnage chaud au
+  coucher / froid la nuit, ombres teintées, grain fin), éclairage toon plus doux (rampe lissée),
+  ombres colorées façon illustration, liseré lumineux (rim light) côté soleil, translucidité des
+  feuilles, herbe et fleurs qui s'écartent sous les pas, ciel avec nuages peints, disque solaire et
+  lune, eau réécrite (vagues en relief, reflets du ciel, reflets du soleil, caustiques, écume).
+- **Dépôt de modèles 3D** (`game/models/`) : déposez des `.glb` pour remplacer arbres, rochers,
+  meubles, décorations, bâtiments et structures, ou pour poser vos propres modèles n'importe où
+  (`placements.json`). Vérification et build automatiques par GitHub Actions (« Modèles 3D »).

@@ -56,7 +56,7 @@ export class CameraRig {
       this.fpPitch = clamp(this.fpPitch - dy * 0.0045, -1.25, 1.05);
     } else {
       this.yawTarget -= dx * 0.006;
-      this.pitchTarget = clamp(this.pitchTarget + dy * 0.003, 0.45, 1.3);
+      this.pitchTarget = clamp(this.pitchTarget + dy * 0.003, 0.28, 1.35);
     }
   }
 
@@ -72,7 +72,7 @@ export class CameraRig {
   }
 
   setZoom(z: number): void {
-    this.zoomTarget = clamp(z, 0.6, 1.55);
+    this.zoomTarget = clamp(z, 0.5, 2.4);
   }
 
   update(dt: number, follow: THREE.Vector3, velocity: THREE.Vector3): void {

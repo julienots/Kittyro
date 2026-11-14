@@ -262,7 +262,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
     fog: true,
     uniforms: THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
-      { uColor: { value: c }, uDeep: { value: c.clone().multiplyScalar(0.55) }, uLight: { value: 1 }, uSky: { value: new THREE.Color(0xffffff) } },
+      { uColor: { value: c }, uDeep: { value: c.clone().multiplyScalar(0.5).lerp(new THREE.Color(0x1a4a7a), 0.25) }, uFrozen: { value: frozenTint ? 1 : 0 } },
     ]) as any,
     vertexShader: `
       attribute float aShore;
@@ -272,33 +272,65 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
       void main(){
         vShore = aShore;
         vec3 p = position;
-        p.y += sin(uTime*1.3 + p.x*0.9 + p.z*0.7)*0.025;
+        p.y += sin(uTime*1.3 + p.x*0.9 + p.z*0.7)*0.025 + sin(uTime*0.9 - p.x*0.4 + p.z*1.1)*0.015;
         vW = (modelMatrix*vec4(p,1.0)).xyz;
         vec4 mvPosition = modelViewMatrix*vec4(p,1.0);
         gl_Position = projectionMatrix*mvPosition;
         #include <fog_vertex>
       }`,
     fragmentShader: `
-      uniform vec3 uColor; uniform vec3 uDeep; uniform float uTime; uniform float uLight; uniform vec3 uSky;
+      uniform vec3 uColor; uniform vec3 uDeep; uniform float uTime; uniform float uFrozen;
+      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform float uNight;
       varying float vShore; varying vec3 vW;
       #include <fog_pars_fragment>
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+      float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
+      float wav(vec2 p){
+        float t = uTime * (1.0 - uFrozen);
+        return sin(p.x*2.1 + t*1.2 + sin(p.y*1.7 + t*0.8)*1.4) * sin(p.y*1.9 - t*1.0) * 0.5
+             + noise(p*2.6 + vec2(t*0.35, -t*0.25)) * 0.6 + noise(p*6.3 - vec2(t*0.5, t*0.2)) * 0.25;
+      }
+      float caustic(vec2 p){
+        float t = uTime * 0.6;
+        float a = sin(p.x*3.1 + sin(p.y*2.3 + t)) * sin(p.y*3.4 + sin(p.x*2.6 - t*1.1));
+        return pow(1.0 - abs(a), 7.0);
+      }
       void main(){
-        float ripple = sin(vW.x*2.1 + uTime*1.2 + sin(vW.z*1.7 + uTime*0.8)*1.4) * sin(vW.z*1.9 - uTime*1.0);
-        vec3 col = mix(uDeep, uColor, 0.55 + 0.25*ripple);
-        float band = smoothstep(0.82, 0.95, ripple);
-        col += vec3(0.35)*band*0.6;
-        float foam = smoothstep(0.35, 1.0, vShore) * (0.55 + 0.45*sin(uTime*2.0 + vW.x*3.0 + vW.z*2.0));
-        col = mix(col, vec3(1.0), foam*0.7);
-        float sp = step(0.985, hash(floor(vW.xz*6.0) + floor(uTime*2.0)));
-        col += sp*0.5*uLight;
-        col *= mix(0.45, 1.0, uLight);
-        col = mix(col, uSky, 0.08);
-        gl_FragColor = vec4(col, 0.84 + foam*0.12);
+        vec2 p = vW.xz;
+        float e = 0.06;
+        float h0 = wav(p), hx = wav(p + vec2(e, 0.0)), hz = wav(p + vec2(0.0, e));
+        vec3 N = normalize(vec3(-(hx - h0) / e * 0.09, 1.0, -(hz - h0) / e * 0.09));
+        vec3 V = normalize(cameraPosition - vW);
+        float fres = 0.06 + 0.94 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+        // shallow water near the shore is lighter and shows dancing caustics
+        float shallow = smoothstep(0.0, 0.9, vShore);
+        vec3 col = mix(uDeep, uColor, 0.45 + shallow * 0.45 + h0 * 0.12);
+        col += vec3(0.55, 0.75, 0.7) * caustic(p * 1.3) * shallow * 0.28 * (1.0 - uNight);
+        // sky reflection
+        col = mix(col, mix(uSkyColor, vec3(1.0), 0.2), clamp(fres * 0.75, 0.0, 0.7));
+        // sun / moon glint (feeds the bloom)
+        vec3 H = normalize(normalize(uSunDir) + V);
+        float spec = pow(max(dot(N, H), 0.0), 320.0);
+        col += uSunColor * spec * mix(1.5, 0.7, uNight);
+        // stylised sparkles
+        float sp = step(0.988, hash(floor(vW.xz*6.0) + floor(uTime*2.0))) * step(0.2, h0);
+        col += sp * 0.45 * (1.0 - uNight * 0.7);
+        // foam: a crisp line on the shore plus soft bands rolling in
+        float foam = smoothstep(0.72, 0.95, vShore) * (0.65 + 0.35 * noise(p * 4.0 + uTime * 0.5));
+        foam += smoothstep(0.35, 0.8, vShore) * smoothstep(0.75, 0.95, sin(vShore * 14.0 - uTime * 1.8 + noise(p * 1.5) * 4.0)) * 0.45;
+        foam = clamp(foam, 0.0, 1.0) * (1.0 - uFrozen * 0.6);
+        col = mix(col, vec3(1.0), foam * 0.75);
+        col *= mix(1.0, 0.42, uNight);
+        gl_FragColor = vec4(col, clamp(0.76 + fres * 0.2 + foam * 0.15, 0.0, 0.97));
         #include <fog_fragment>
       }`,
   });
   m.uniforms.uTime = globalUniforms.uTime;
+  m.uniforms.uSunDir = globalUniforms.uSunDir;
+  m.uniforms.uSunColor = globalUniforms.uSunColor;
+  m.uniforms.uSkyColor = globalUniforms.uSkyColor;
+  m.uniforms.uNight = globalUniforms.uNight;
   return m;
 }
 

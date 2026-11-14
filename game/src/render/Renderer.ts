@@ -5,7 +5,9 @@ import { globalUniforms } from './Materials';
 export interface QualityProfile {
   pixelRatio: number;
   shadow: number; // shadow map size, 0 = blob shadows only
-  post: boolean; // tilt-shift + grading
+  post: boolean; // bloom + grading (+ tilt-shift when `tilt`)
+  tilt: boolean;
+  bloomPasses: number;
   particles: number; // budget 0..1
   grass: number; // grass density multiplier
   outlines: boolean;
@@ -15,29 +17,73 @@ export interface QualityProfile {
 }
 
 export const QUALITY: Record<Quality, QualityProfile> = {
-  low: { pixelRatio: 1.0, shadow: 0, post: false, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: false, drawDistance: 40 },
-  medium: { pixelRatio: 1.25, shadow: 1024, post: false, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 55 },
-  high: { pixelRatio: 1.75, shadow: 2048, post: true, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 70 },
-  ultra: { pixelRatio: 2.25, shadow: 4096, post: true, particles: 1, grass: 1.4, outlines: true, lights: 6, antialias: true, drawDistance: 90 },
+  low: { pixelRatio: 1.0, shadow: 0, post: false, tilt: false, bloomPasses: 0, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: false, drawDistance: 48 },
+  medium: { pixelRatio: 1.25, shadow: 1024, post: true, tilt: false, bloomPasses: 1, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 70 },
+  high: { pixelRatio: 1.75, shadow: 2048, post: true, tilt: true, bloomPasses: 2, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 90 },
+  ultra: { pixelRatio: 2.25, shadow: 4096, post: true, tilt: true, bloomPasses: 3, particles: 1, grass: 1.4, outlines: true, lights: 6, antialias: true, drawDistance: 120 },
 };
 
-/** Tilt-shift "miniature" post effect with warm grading and vignette. */
-class TiltShift {
+const FS_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+
+/**
+ * Post-processing chain: HDR scene target -> bright-pass + separable blur at quarter
+ * resolution (bloom) -> composite with tilt-shift "miniature" depth of field, soft
+ * highlight roll-off, colour grading driven by the time of day, vignette and grain.
+ */
+class PostFX {
   rt: THREE.WebGLRenderTarget;
+  private bloomA: THREE.WebGLRenderTarget;
+  private bloomB: THREE.WebGLRenderTarget;
   scene = new THREE.Scene();
   cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private quad: THREE.Mesh;
   mat: THREE.ShaderMaterial;
+  private bright: THREE.ShaderMaterial;
+  private blur: THREE.ShaderMaterial;
 
-  constructor(w: number, h: number, samples: number) {
+  constructor(w: number, h: number, samples: number, private passes: number) {
     this.rt = new THREE.WebGLRenderTarget(w, h, { samples, type: THREE.HalfFloatType });
     this.rt.texture.colorSpace = THREE.LinearSRGBColorSpace;
+    const bw = Math.max(1, w >> 2), bh = Math.max(1, h >> 2);
+    const opts = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter } as const;
+    this.bloomA = new THREE.WebGLRenderTarget(bw, bh, opts);
+    this.bloomB = new THREE.WebGLRenderTarget(bw, bh, opts);
+    this.bright = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: this.rt.texture }, uPx: { value: new THREE.Vector2(1 / w, 1 / h) }, uThreshold: { value: 0.95 } },
+      vertexShader: FS_VERT,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uPx; uniform float uThreshold; varying vec2 vUv;
+        vec3 tap(vec2 o){ vec3 c = texture2D(tDiffuse, vUv + o * uPx).rgb; float l = max(c.r, max(c.g, c.b));
+          return c * smoothstep(uThreshold, uThreshold + 0.4, l); }
+        void main(){
+          vec3 c = tap(vec2(-1.5,-1.5)) + tap(vec2(1.5,-1.5)) + tap(vec2(-1.5,1.5)) + tap(vec2(1.5,1.5));
+          gl_FragColor = vec4(c * 0.25, 1.0);
+        }`,
+    });
+    this.blur = new THREE.ShaderMaterial({
+      uniforms: { tDiffuse: { value: null }, uDir: { value: new THREE.Vector2(1 / bw, 0) } },
+      vertexShader: FS_VERT,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uDir; varying vec2 vUv;
+        void main(){
+          vec3 c = texture2D(tDiffuse, vUv).rgb * 0.227;
+          c += (texture2D(tDiffuse, vUv + uDir * 1.385).rgb + texture2D(tDiffuse, vUv - uDir * 1.385).rgb) * 0.316;
+          c += (texture2D(tDiffuse, vUv + uDir * 3.231).rgb + texture2D(tDiffuse, vUv - uDir * 3.231).rgb) * 0.070;
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new THREE.Vector2(w, h) }, uFocus: { value: 0.52 }, uAmount: { value: 1 } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      uniforms: {
+        tDiffuse: { value: this.rt.texture }, tBloom: { value: this.bloomA.texture },
+        uRes: { value: new THREE.Vector2(w, h) }, uFocus: { value: 0.52 }, uAmount: { value: 1 },
+        uBloom: { value: 0.45 }, uTime: { value: 0 }, uGrain: { value: 0.025 },
+        uWarm: { value: 0 }, uNight: { value: 0 }, uSat: { value: 1.08 }, uContrast: { value: 1.06 }, uVignette: { value: 0.5 },
+      },
+      vertexShader: FS_VERT,
       fragmentShader: `
-        uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uFocus; uniform float uAmount;
+        uniform sampler2D tDiffuse; uniform sampler2D tBloom; uniform vec2 uRes; uniform float uFocus; uniform float uAmount;
+        uniform float uBloom, uTime, uGrain, uWarm, uNight, uSat, uContrast, uVignette;
         varying vec2 vUv;
         const int N = 12;
+        float hashP(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime) * 43758.5453); }
         void main(){
           vec2 px = 1.0 / uRes;
           float dist = abs(vUv.y - uFocus);
@@ -54,25 +100,71 @@ class TiltShift {
             }
           }
           vec3 c = acc.rgb / wsum;
-          // gentle grading: lift saturation, warm highlights
+          // bloom: soft glow around lamps, sun-lit water, crystals, fireflies
+          vec3 bl = texture2D(tBloom, vUv).rgb;
+          c += bl * uBloom * (1.0 + uNight * 0.5);
+          // soft highlight roll-off (keeps the pastel look, no harsh clipping)
+          vec3 over = max(c - 0.82, 0.0);
+          c = min(c, 0.82) + over / (1.0 + over * 2.2);
+          // grading: contrast around mid-grey, saturation, warm sunsets / cool nights
+          c = (c - 0.5) * uContrast + 0.5;
           float l = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(vec3(l), c, 0.96);
-          c *= vec3(1.02, 1.0, 0.97);
+          c = mix(vec3(l), c, uSat);
+          c *= mix(vec3(1.0), vec3(1.07, 1.0, 0.9), uWarm);
+          c *= mix(vec3(1.0), vec3(0.95, 0.98, 1.05), uNight);
+          // lifted shadows tinted slightly blue-violet, like a painted illustration
+          c += vec3(0.012, 0.014, 0.03) * (1.0 - smoothstep(0.0, 0.35, l));
           // vignette
           vec2 q = vUv - 0.5;
-          c *= 1.0 - dot(q, q) * 0.55;
-          gl_FragColor = vec4(c, 1.0);
+          c *= 1.0 - dot(q, q) * uVignette;
+          // fine film grain (breaks banding in skies and fog)
+          c += (hashP(vUv * uRes) - 0.5) * uGrain;
+          gl_FragColor = vec4(max(c, 0.0), 1.0);
           #include <colorspace_fragment>
         }`,
     });
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
-    quad.frustumCulled = false;
-    this.scene.add(quad);
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
+    this.quad.frustumCulled = false;
+    this.scene.add(this.quad);
   }
 
   setSize(w: number, h: number): void {
     this.rt.setSize(w, h);
+    const bw = Math.max(1, w >> 2), bh = Math.max(1, h >> 2);
+    this.bloomA.setSize(bw, bh);
+    this.bloomB.setSize(bw, bh);
     (this.mat.uniforms.uRes.value as THREE.Vector2).set(w, h);
+    (this.bright.uniforms.uPx.value as THREE.Vector2).set(1 / w, 1 / h);
+  }
+
+  private pass(r: THREE.WebGLRenderer, m: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null): void {
+    this.quad.material = m;
+    r.setRenderTarget(target);
+    r.render(this.scene, this.cam);
+  }
+
+  /** Bloom + composite; the scene must already be rendered into `rt`. */
+  finish(r: THREE.WebGLRenderer): void {
+    if ((this.mat.uniforms.uBloom.value as number) > 0.01) {
+      this.pass(r, this.bright, this.bloomA);
+      const bw = this.bloomA.width, bh = this.bloomA.height;
+      for (let i = 0; i < this.passes; i++) {
+        const sp = 1 + i * 1.5;
+        this.blur.uniforms.tDiffuse.value = this.bloomA.texture;
+        (this.blur.uniforms.uDir.value as THREE.Vector2).set(sp / bw, 0);
+        this.pass(r, this.blur, this.bloomB);
+        this.blur.uniforms.tDiffuse.value = this.bloomB.texture;
+        (this.blur.uniforms.uDir.value as THREE.Vector2).set(0, sp / bh);
+        this.pass(r, this.blur, this.bloomA);
+      }
+    }
+    this.pass(r, this.mat, null);
+  }
+
+  dispose(): void {
+    this.rt.dispose();
+    this.bloomA.dispose();
+    this.bloomB.dispose();
   }
 }
 
@@ -82,7 +174,10 @@ export class Renderer {
   readonly camera: THREE.PerspectiveCamera;
   profile: QualityProfile;
   quality: Quality;
-  private post: TiltShift | null = null;
+  private post: PostFX | null = null;
+  private tiltAmount = 1;
+  /** grading inputs, set by the game every frame */
+  grade = { warm: 0, night: 0, time: 0 };
   private dynScale = 1;
   private fpsAcc = 0;
   private fpsFrames = 0;
@@ -104,6 +199,10 @@ export class Renderer {
   }
 
   applyQuality(q: Quality): void {
+    if (this.post) {
+      this.post.dispose();
+      this.post = null;
+    }
     this.quality = q;
     this.profile = QUALITY[q];
     this.renderer.shadowMap.enabled = this.profile.shadow > 0;
@@ -132,16 +231,16 @@ export class Renderer {
     globalUniforms.uAspect.value = w / h;
     if (this.profile.post) {
       const pw = Math.floor(w * this.pixelRatio), ph = Math.floor(h * this.pixelRatio);
-      if (!this.post) this.post = new TiltShift(pw, ph, this.quality === 'ultra' ? 4 : 2);
+      if (!this.post) this.post = new PostFX(pw, ph, this.quality === 'ultra' ? 4 : 2, this.profile.bloomPasses);
       else this.post.setSize(pw, ph);
     } else if (this.post) {
-      this.post.rt.dispose();
+      this.post.dispose();
       this.post = null;
     }
   }
 
   setTiltShift(amount: number): void {
-    if (this.post) this.post.mat.uniforms.uAmount.value = amount;
+    this.tiltAmount = amount;
   }
 
   /** Track FPS and adapt resolution on slow devices. */
@@ -174,8 +273,13 @@ export class Renderer {
     if (this.post) {
       this.renderer.setRenderTarget(this.post.rt);
       this.renderer.render(this.scene, this.camera);
-      this.renderer.setRenderTarget(null);
-      this.renderer.render(this.post.scene, this.post.cam);
+      const u = this.post.mat.uniforms;
+      u.uAmount.value = this.profile.tilt ? this.tiltAmount : 0;
+      u.uWarm.value = this.grade.warm;
+      u.uNight.value = this.grade.night;
+      u.uTime.value = this.grade.time % 100;
+      u.uGrain.value = 0.012;
+      this.post.finish(this.renderer);
     } else {
       this.renderer.render(this.scene, this.camera);
     }

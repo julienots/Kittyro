@@ -182,6 +182,7 @@ const MAP_STYLE: Record<string, { top: string; top2: string; side: string; size:
   frosty: { top: '#eef4ff', top2: '#ffffff', side: '#8a9ab8', size: 0.95, deco: 'frosty' },
   ember: { top: '#9a6a5a', top2: '#c08a6a', side: '#3a2a2a', size: 0.95, deco: 'ember' },
   hamlet: { top: '#c8e07a', top2: '#e4f2a8', side: '#9a6a42', size: 0.9, deco: 'hamlet' },
+  highlands: { top: '#8fcf6a', top2: '#c4e894', side: '#8a6a4a', size: 1.25, deco: 'highlands' },
 };
 const MAP_W = 1000, MAP_H = 625;
 
@@ -239,6 +240,9 @@ function islandDeco(kind: string, cx: number, cy: number, r: number, hamletPop: 
       o.push(`<path d="M${cx - 30} ${cy + 10} L${cx - 8} ${cy - 26} L${cx + 8} ${cy - 26} L${cx + 30} ${cy + 10}Z" fill="#4a3a3a"/><path d="M${cx - 8} ${cy - 26} L${cx + 8} ${cy - 26} L${cx + 4} ${cy - 18} L${cx - 4} ${cy - 18}Z" fill="#ff6a2a"/><path d="M${cx - 2} ${cy - 18} q6 14 -4 28" stroke="#ff8a3a" stroke-width="4" fill="none"/>`,
         `<circle class="map-smoke" cx="${cx}" cy="${cy - 34}" r="7" fill="#d8c8c0" opacity=".7"/><circle class="map-smoke" cx="${cx + 6}" cy="${cy - 44}" r="9" fill="#e8dcd4" opacity=".55" style="animation-delay:-1.5s"/>`);
       break;
+    case 'highlands':
+      o.push(peak(cx - 30, cy - 10, 0.9, '#9a96a0'), `<ellipse cx="${cx - 6}" cy="${cy + 14}" rx="18" ry="8" fill="#8fd3ff" stroke="#e8f4ff" stroke-width="2"/>`, `<g transform="translate(${cx + 22} ${cy - 4})"><rect x="-5" y="-14" width="10" height="20" rx="2" fill="#f0e8d8"/><path d="M-7 -14 L0 -22 L7 -14Z" fill="#b8604a"/><path d="M0 -16 l-12 -10 M0 -16 l12 -10 M0 -16 l-12 10 M0 -16 l12 10" stroke="#8a6a4a" stroke-width="2"/></g>`, tree(cx + 44, cy + 10, 0.8), pine(cx - 46, cy + 8, 0.8), tree(cx + 6, cy - 14, 0.7, '#5aa84a'));
+      break;
     case 'hamlet': {
       // the hamlet grows on the map as villagers move in
       o.push(`<path d="M${cx - 30} ${cy + 10} L${cx - 20} ${cy - 6} L${cx - 10} ${cy + 10}Z" fill="#e8a33a"/>`, `<circle cx="${cx + 2}" cy="${cy + 12}" r="3" fill="#ff9a3a"/>`, tree(cx + 34, cy - 4, 0.8), tree(cx - 40, cy - 8, 0.7, '#5aa84a'));
@@ -256,7 +260,7 @@ function map(ui: UI, unlockedNow?: string, selected?: string): void {
   const st = g.ctx.state;
   const regions = REGIONS.filter((r) => r.id !== 'house');
   const here = g.regionId === 'house' ? 'farm' : g.regionId;
-  const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember'], ['farm', 'hamlet']];
+  const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember'], ['farm', 'hamlet'], ['farm', 'highlands']];
   const P = (id: string) => { const m = REGION_BY_ID[id as 'farm'].map; return [m[0] * MAP_W, m[1] * MAP_H] as [number, number]; };
   const R = (id: string) => 62 * (MAP_STYLE[id]?.size ?? 1);
   const sel = selected ?? here;
@@ -955,7 +959,7 @@ function settings(ui: UI): void {
     ta,
     h('div.row', { style: { marginTop: '10px' } }, h('button.btn.small.rose', { onclick: () => ui.confirm('Effacer cette partie et recommencer ? (irréversible)', () => g.resetGame(), 'Effacer') }, '🗑️ Nouvelle partie')),
     help('Efface définitivement la partie en cours. Pensez à exporter votre code avant !'),
-    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.5.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
+    h('p.muted.center', { style: { marginTop: '14px' } }, 'Mossy Meadows v1.6.0 — un jeu cozy original. Aucune romance, juste des amis 🌿'),
   ]);
 }
 

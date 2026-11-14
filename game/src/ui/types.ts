@@ -29,6 +29,7 @@ export interface GameApi {
   selectTool(t: ToolId): void;
   selectSeed(id: string | null): void;
   toggleRide(): void;
+  toggleSprint(): void;
   setPaused(p: boolean): void;
   refreshLook(): void;
   refreshWorld(kind: 'placed' | 'house' | 'plots' | 'all'): void;

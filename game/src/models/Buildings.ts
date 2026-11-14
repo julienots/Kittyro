@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overrideGeo, fittedOverride } from './External';
 import { mb, ModelBuilder, TEX } from './Builder';
 
 /**
@@ -119,7 +120,7 @@ function fenceRow(b: ModelBuilder, x0: number, z0: number, x1: number, z1: numbe
   b.box(0.05, 0.06, len, color, { pos: [(x0 + x1) / 2, 0.18, (z0 + z1) / 2], rot: [0, ang, 0] });
 }
 
-export function farmBuildingModel(kind: string, w: number, d: number, roof: number, wall: number, ruined = false): BuildingModel {
+function farmBuildingModelBase(kind: string, w: number, d: number, roof: number, wall: number, ruined = false): BuildingModel {
   const b = mb(), win = mb();
   const cx = w / 2, cz = d / 2;
   let smoke: THREE.Vector3[] = [];
@@ -303,7 +304,7 @@ export function farmBuildingModel(kind: string, w: number, d: number, roof: numb
 }
 
 /** Village buildings — `restored=false` renders the ruined version. */
-export function villageBuildingModel(style: string, w: number, d: number, roof: number, wall: number, restored: boolean): BuildingModel {
+function villageBuildingModelBase(style: string, w: number, d: number, roof: number, wall: number, restored: boolean): BuildingModel {
   const b = mb(), win = mb();
   const cx = w / 2, cz = d / 2;
   let smoke: THREE.Vector3[] = [];
@@ -447,7 +448,7 @@ export function villageBuildingModel(style: string, w: number, d: number, roof: 
 }
 
 /** Misc world structures. */
-export function structureGeo(kind: string, p: { w?: number; color?: number; broken?: boolean; stone?: boolean; dark?: boolean; label?: string } = {}): THREE.BufferGeometry {
+function structureGeoBase(kind: string, p: { w?: number; color?: number; broken?: boolean; stone?: boolean; dark?: boolean; label?: string } = {}): THREE.BufferGeometry {
   const b = mb();
   switch (kind) {
     case 'bridge': {
@@ -571,12 +572,80 @@ export function structureGeo(kind: string, p: { w?: number; color?: number; brok
       for (let i = 0; i < 4; i++) b.dodeca(0.6, [0x2a2020, 0x4a3a3a], { pos: [-1.1 + i * 0.75, 0.6, 0], scale: [1, 1.3, 1] });
       b.box(0.5, 0.5, 0.1, 0xff6a2a, { pos: [0, 0.8, 0.5] });
       break;
+    case 'ruin_tower': {
+      // crumbling round watch-tower, ivy and a broken crown of battlements
+      const stone = 0xb8b0a4, dark = 0x8a8478;
+      for (let i = 0; i < 9; i++) {
+        const r = 1.35 - i * 0.03;
+        b.cyl(r, r + 0.03, 0.6, i % 2 ? stone : 0xaca496, { pos: [0, 0.3 + i * 0.6, 0], tex: 3 }, 14);
+      }
+      for (let k = 0; k < 10; k++) {
+        if (k === 3 || k === 7 || k === 8) continue;
+        const a = (k / 10) * Math.PI * 2;
+        b.box(0.45, 0.5 + (k % 3) * 0.15, 0.35, stone, { pos: [Math.sin(a) * 1.15, 5.65, Math.cos(a) * 1.15], rot: [0, a, 0], tex: 3 });
+      }
+      b.box(0.7, 1.2, 0.2, 0x3a2e2a, { pos: [0, 0.6, 1.33] });
+      b.box(0.36, 0.6, 0.2, 0x2a2228, { pos: [0.6, 3.2, 1.2], rot: [0, 0.45, 0] });
+      b.box(0.36, 0.6, 0.2, 0x2a2228, { pos: [-0.9, 4.3, 0.9], rot: [0, -0.8, 0] });
+      for (let i = 0; i < 14; i++) {
+        const a = 2.2 + i * 0.13, y = 0.4 + i * 0.32;
+        b.sphere(0.32, [0x4f8a3a, 0x7cbf5a], { pos: [Math.sin(a) * 1.38, y, Math.cos(a) * 1.38], scale: [1, 1.3, 0.5], rot: [0, a, 0] }, 6);
+      }
+      for (let i = 0; i < 6; i++) b.dodeca(0.3 + (i % 3) * 0.1, dark, { pos: [Math.sin(i * 1.7) * 2.1, 0.15, Math.cos(i * 1.7) * 2.1], rot: [i, i * 2, 0] });
+      break;
+    }
+    case 'lookout': {
+      // wooden lookout platform on stilts with a ladder and a little roof
+      const wood = 0x9a6a42, light = 0xc08a5a;
+      for (const [x, z] of [[-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]]) b.cyl(0.1, 0.13, 3.2, wood, { pos: [x, 1.6, z] }, 6);
+      b.box(2.3, 0.14, 2.3, light, { pos: [0, 3.2, 0], tex: 1 });
+      for (const sz of [-1.1, 1.1]) { b.box(2.3, 0.08, 0.08, wood, { pos: [0, 3.75, sz] }); b.box(0.08, 0.08, 2.3, wood, { pos: [sz, 3.75, 0] }); }
+      for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) b.cyl(0.06, 0.06, 1.4, wood, { pos: [x, 3.9, z] }, 5);
+      b.cone(1.9, 0.9, [0xc8574a, 0xe8786a], { pos: [0, 5.05, 0], rot: [0, Math.PI / 4, 0] }, 4);
+      for (let i = 0; i < 9; i++) b.box(0.6, 0.06, 0.08, light, { pos: [0, 0.3 + i * 0.34, 1.25 + i * 0.02] });
+      for (const sx of [-0.3, 0.3]) b.box(0.07, 3.2, 0.07, wood, { pos: [sx, 1.6, 1.3], rot: [-0.08, 0, 0] });
+      b.box(0.5, 0.35, 0.1, 0xfff0c0, { pos: [0, 4.0, -1.12] });
+      break;
+    }
+    case 'windmill': {
+      // stone windmill tower (the sails are a separate spinning mesh)
+      b.cyl(1.0, 1.45, 4.2, [0xd8cfc0, 0xf0e8d8], { pos: [0, 2.1, 0], tex: 6 }, 12);
+      b.cone(1.25, 1.5, [0x8a4a3a, 0xb8604a], { pos: [0, 4.95, 0], tex: 4 }, 12);
+      b.box(0.7, 1.1, 0.2, 0x6a4a32, { pos: [0, 0.55, 1.38] });
+      b.box(0.45, 0.5, 0.15, 0x4a6a8a, { pos: [0, 2.6, 1.18] });
+      b.box(0.45, 0.5, 0.15, 0x4a6a8a, { pos: [0.95, 1.6, 0.6], rot: [0, 1.0, 0] });
+      b.cyl(0.18, 0.18, 0.5, 0x5a3a2a, { pos: [0, 4.3, 1.15], rot: [Math.PI / 2, 0, 0] }, 8);
+      break;
+    }
+    case 'windmill_sails': {
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2;
+        b.box(0.12, 2.4, 0.06, 0x6a4a32, { pos: [Math.sin(a) * 1.2, Math.cos(a) * 1.2, 0], rot: [0, 0, -a] });
+        b.box(0.62, 1.9, 0.03, 0xf4ecd8, { pos: [Math.sin(a) * 1.35 + Math.cos(a) * 0.36, Math.cos(a) * 1.35 - Math.sin(a) * 0.36, 0.03], rot: [0, 0, -a] });
+      }
+      b.sphere(0.2, 0x5a3a2a, {}, 8);
+      break;
+    }
+    case 'stone_circle': {
+      // ring of ancient standing stones around a mossy altar
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 9) * Math.PI * 2;
+        const h = 1.6 + ((k * 7) % 5) * 0.18;
+        if (k === 4) { b.box(0.5, 0.45, 1.3, 0x9a968c, { pos: [Math.sin(a) * 3, 0.22, Math.cos(a) * 3], rot: [0.1, a + 0.5, 1.45] }); continue; }
+        b.box(0.62, h, 0.4, [0x8a867e, 0xb8b4a8], { pos: [Math.sin(a) * 3, h / 2, Math.cos(a) * 3], rot: [((k % 3) - 1) * 0.06, a, ((k % 2) - 0.5) * 0.08], tex: 3 });
+        b.sphere(0.24, 0x6a9a4a, { pos: [Math.sin(a) * 3, h + 0.02, Math.cos(a) * 3], scale: [1.3, 0.35, 0.9] }, 6);
+      }
+      b.cyl(0.8, 0.95, 0.5, 0x9a968c, { pos: [0, 0.25, 0], tex: 3 }, 10);
+      b.cyl(0.85, 0.85, 0.06, 0x6a9a4a, { pos: [0, 0.52, 0] }, 10);
+      b.ico(0.18, 0x9ae8ff, { pos: [0, 0.72, 0] }, 0);
+      break;
+    }
   }
   return b.build();
 }
 
 /** Hamlet buildings (Clairefontaine). Same conventions as farm buildings: origin = min corner, door toward +Z. */
-export function hamletBuildingModel(kind: string, w: number, d: number, roof: number, wall: number, mat: number, roofTex: number): BuildingModel {
+function hamletBuildingModelBase(kind: string, w: number, d: number, roof: number, wall: number, mat: number, roofTex: number): BuildingModel {
   const b = mb(), win = mb();
   const cx = w / 2, cz = d / 2;
   let smoke: THREE.Vector3[] = [];
@@ -781,4 +850,34 @@ export function hamletBuildingModel(kind: string, w: number, d: number, roof: nu
     }
   }
   return { geo: b.build(), windows: win.parts.length ? win.build() : null, smoke, door, lights };
+}
+
+// ---------------------------------------------------------------- custom model overrides
+/** Swap in a model from game/models/override/ (keeps doors, smoke and lights of the built-in one). */
+function withOverride(m: BuildingModel, key: string, w: number, d: number): BuildingModel {
+  const g = fittedOverride(key, w, d);
+  if (!g) return m;
+  return { ...m, geo: g, windows: null, transparent: undefined, spinner: undefined };
+}
+
+export function farmBuildingModel(kind: string, w: number, d: number, roof: number, wall: number, ruined = false): BuildingModel {
+  const m = farmBuildingModelBase(kind, w, d, roof, wall, ruined);
+  return ruined ? m : withOverride(m, `building_${kind}`, w, d);
+}
+
+export function villageBuildingModel(style: string, w: number, d: number, roof: number, wall: number, restored: boolean): BuildingModel {
+  const m = villageBuildingModelBase(style, w, d, roof, wall, restored);
+  return restored ? withOverride(m, `building_${style}`, w, d) : m;
+}
+
+export function hamletBuildingModel(kind: string, w: number, d: number, roof: number, wall: number, mat: number, roofTex: number): BuildingModel {
+  return withOverride(hamletBuildingModelBase(kind, w, d, roof, wall, mat, roofTex), `building_${kind}`, w, d);
+}
+
+export function structureGeo(kind: string, p: { w?: number; color?: number; broken?: boolean; stone?: boolean; dark?: boolean; label?: string } = {}): THREE.BufferGeometry {
+  if (!p.broken) {
+    const g = overrideGeo(kind);
+    if (g) return g;
+  }
+  return structureGeoBase(kind, p);
 }

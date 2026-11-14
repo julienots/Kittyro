@@ -60,6 +60,11 @@ export class Input {
     });
   }
 
+  /** true while the key is held (lower-case key name) */
+  isDown(k: string): boolean {
+    return this.keys.has(k);
+  }
+
   private joystickAllowed(x: number): boolean {
     if (this.mode === 'tap') return false;
     const half = window.innerWidth * 0.55;

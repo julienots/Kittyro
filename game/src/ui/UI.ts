@@ -57,6 +57,8 @@ export class UI {
   private wheel: HTMLElement | null = null;
   onAction: (() => void) | null = null;
   onTool: (() => void) | null = null;
+  onJump: (() => void) | null = null;
+  sprintBtn!: HTMLButtonElement;
   private revealQueue: (() => HTMLElement)[] = [];
   private revealOpen = false;
   modalOpen = false;
@@ -115,6 +117,9 @@ export class UI {
     this.seedBtn = <HTMLButtonElement>h('button.seed-btn', { onclick: (e: Event) => { e.stopPropagation(); this.openPanel('seeds'); } }, '🌱', h('span.q', null, '0'));
     this.rideBtn = <HTMLButtonElement>h('button.ride-btn.hidden', { onclick: (e: Event) => { e.stopPropagation(); g.toggleRide(); } }, '🐴');
     this.waterMeter = h('div.water-meter', null, h('i'));
+    const jumpBtn = <HTMLButtonElement>h('button.jump-btn', { title: 'Sauter (Espace)' }, h('span', null, '⤴'), h('small', null, 'Saut'));
+    press(jumpBtn, () => this.onJump?.());
+    this.sprintBtn = <HTMLButtonElement>h('button.sprint-btn', { title: 'Courir (Maj)', onclick: (e: Event) => { e.stopPropagation(); g.toggleSprint(); } }, h('span', null, '🏃'), h('small', null, 'Courir'));
     this.joyHint = h('div.joy-hint', null, 'Glisser');
     this.hud = h('div.hud.passthrough', { style: { position: 'absolute', inset: '0' } },
       h('div.hud-top-left', null, this.clockEl, this.trackerEl, this.buffsEl),
@@ -131,7 +136,7 @@ export class UI {
           btn('⚙️', 'Menu', () => this.openPanel('settings'), undefined, '.hb-menu'),
         ),
       ),
-      h('div.hud-actions', null, this.actBtn, this.toolBtn, this.seedBtn, this.rideBtn, this.waterMeter),
+      h('div.hud-actions', null, this.actBtn, this.toolBtn, this.seedBtn, this.rideBtn, jumpBtn, this.sprintBtn, this.waterMeter),
       h('div.fp-vignette'),
       h('div.crosshair'),
       this.joyHint,

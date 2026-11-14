@@ -17,16 +17,43 @@ export const globalUniforms = {
   uSnow: { value: 0 },
   /** strength of drifting cloud shadows on the ground (0 indoors / at night) */
   uCloud: { value: 0 },
+  /** player world position: grass and flowers bend away from it */
+  uPlayerPos: { value: new THREE.Vector3(0, -100, 0) },
+  /** direction towards the sun (or moon) */
+  uSunDir: { value: new THREE.Vector3(0.4, 0.8, -0.5).normalize() },
+  uSunColor: { value: new THREE.Color(1, 0.95, 0.85) },
+  /** warm/cool rim light colour and strength (set by the sky every frame) */
+  uRimColor: { value: new THREE.Color(1, 0.92, 0.78) },
+  uRim: { value: 0.35 },
+  /** colour multiplied into shaded areas: painterly cool shadows */
+  uShadowTint: { value: new THREE.Color(0.82, 0.88, 1.05) },
+  uNight: { value: 0 },
+  uSkyColor: { value: new THREE.Color(0.8, 0.9, 1) },
 };
 
 let gradientMap: THREE.DataTexture | null = null;
 export function toonGradient(): THREE.DataTexture {
   if (gradientMap) return gradientMap;
-  // 4 soft bands: shadow, mid, light, highlight
-  const data = new Uint8Array([110, 110, 110, 255, 170, 170, 170, 255, 225, 225, 225, 255, 255, 255, 255, 255]);
-  gradientMap = new THREE.DataTexture(data, 4, 1, THREE.RGBAFormat);
-  gradientMap.minFilter = THREE.NearestFilter;
-  gradientMap.magFilter = THREE.NearestFilter;
+  // soft painterly toon ramp: 3 broad bands joined by short smooth transitions
+  const N = 64;
+  const data = new Uint8Array(N * 4);
+  const bands: [number, number][] = [[0.0, 118], [0.34, 182], [0.62, 232], [0.86, 255]];
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    let v = bands[0][1];
+    for (let b = 1; b < bands.length; b++) {
+      const [at, val] = bands[b];
+      const prev = bands[b - 1][1];
+      const k = Math.min(1, Math.max(0, (t - at + 0.045) / 0.09));
+      const sm = k * k * (3 - 2 * k);
+      if (t > at - 0.045) v = prev + (val - prev) * sm;
+    }
+    data[i * 4] = data[i * 4 + 1] = data[i * 4 + 2] = Math.round(v);
+    data[i * 4 + 3] = 255;
+  }
+  gradientMap = new THREE.DataTexture(data, N, 1, THREE.RGBAFormat);
+  gradientMap.minFilter = THREE.LinearFilter;
+  gradientMap.magFilter = THREE.LinearFilter;
   gradientMap.generateMipmaps = false;
   gradientMap.needsUpdate = true;
   return gradientMap;
@@ -91,6 +118,9 @@ export interface MatOptions {
   textured?: boolean; // procedural surface patterns from the `aPat` attribute (planks, bricks, shingles...)
   clouds?: boolean; // drifting cloud shadows (default on)
   groundNoise?: number; // world-space grain (continuous across meshes, so tiles never show seams)
+  bend?: boolean; // grass: bends away from the player
+  rim?: number; // rim light multiplier (default 1, 0 disables the painterly lighting stage)
+  foliage?: boolean; // light passes through leaves (wrap + translucency)
 }
 
 const CLOUD_GLSL = `
@@ -163,6 +193,9 @@ function patch(mat: THREE.Material, o: MatOptions): void {
   const tex = !!o.textured;
   const clouds = o.clouds !== false;
   const grain = o.groundNoise ?? 0;
+  const bend = !!o.bend;
+  const rim = o.rim ?? 1;
+  const leaf = !!o.foliage;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
       uTime: globalUniforms.uTime,
@@ -173,9 +206,16 @@ function patch(mat: THREE.Material, o: MatOptions): void {
       uAspect: globalUniforms.uAspect,
       uSnow: globalUniforms.uSnow,
       uCloud: globalUniforms.uCloud,
+      uPlayerPos: globalUniforms.uPlayerPos,
+      uSunDir: globalUniforms.uSunDir,
+      uSunColor: globalUniforms.uSunColor,
+      uRimColor: globalUniforms.uRimColor,
+      uRim: globalUniforms.uRim,
+      uShadowTint: globalUniforms.uShadowTint,
+      uNight: globalUniforms.uNight,
     });
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>
-      uniform float uTime; uniform float uWind;
+      uniform float uTime; uniform float uWind; uniform vec3 uPlayerPos;
       varying vec3 vWorldNormalMM; varying vec4 vClipMM;
       varying vec3 vWorldPosMM;
       ${tex ? 'attribute float aPat; varying float vPatMM; varying vec3 vObjPosMM; varying vec3 vObjNMM;' : ''}`);
@@ -191,6 +231,18 @@ function patch(mat: THREE.Material, o: MatOptions): void {
         float sway = sin(uTime * 1.7 + wp0.x * 0.35 + wp0.z * 0.27) * 0.6 + sin(uTime * 3.1 + wp0.x * 0.9) * 0.25;
         transformed.x += sway * ${wind.toFixed(3)} * uWind * h * h;
         transformed.z += cos(uTime * 1.3 + wp0.z * 0.31) * ${(wind * 0.6).toFixed(3)} * uWind * h * h;
+        ${bend ? `{ vec2 away = wp0.xz - uPlayerPos.xz; float dd = length(away);
+          float push = (1.0 - smoothstep(0.15, 0.95, dd)) * step(abs(wp0.y - uPlayerPos.y), 1.2);
+          vec2 dir = away / max(dd, 0.001);
+          float hb = min(h, 0.45);
+          mat3 imB = mat3(modelMatrix);
+          #ifdef USE_INSTANCING
+            imB = imB * mat3(instanceMatrix);
+          #endif
+          vec3 ld = transpose(imB) * vec3(dir.x, 0.0, dir.y);
+          ld = normalize(ld) * push * hb;
+          transformed += ld * 0.75;
+          transformed.y -= push * hb * 0.3; }` : ''}
       }`);
     }
     vs = vs.replace('#include <project_vertex>', `#include <project_vertex>
@@ -207,6 +259,7 @@ function patch(mat: THREE.Material, o: MatOptions): void {
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>
       uniform vec2 uPlayerScreen; uniform float uPlayerDepth; uniform float uSeeThrough; uniform float uAspect; uniform float uSnow;
       uniform float uTime; uniform float uCloud;
+      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uRimColor; uniform float uRim; uniform vec3 uShadowTint; uniform float uNight;
       varying vec3 vWorldNormalMM; varying vec4 vClipMM; varying vec3 vWorldPosMM;
       ${CLOUD_GLSL}
       float bayer4(vec2 p){ int x = int(mod(p.x, 4.0)); int y = int(mod(p.y, 4.0)); int i = x + y * 4;
@@ -242,9 +295,28 @@ function patch(mat: THREE.Material, o: MatOptions): void {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
       { float up = clamp(vWorldNormalMM.y, 0.0, 1.0); float s = smoothstep(0.5, 0.85, up) * uSnow; diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.98, 1.0), s); }`);
     }
+    if (rim > 0 && fs.includes('#include <opaque_fragment>')) {
+      fs = fs.replace('#include <opaque_fragment>', `
+      {
+        // painterly lighting: cool shadows, warm rim towards the sun, soft leaf translucency
+        vec3 Vd = normalize(vViewPosition);
+        float ndv = clamp(dot(normal, Vd), 0.0, 1.0);
+        float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114));
+        float base = max(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.02);
+        float lit = clamp(lum / base, 0.0, 1.6);
+        outgoingLight *= mix(uShadowTint, vec3(1.0), smoothstep(0.35, 0.95, lit));
+        vec3 Nw = normalize(vWorldNormalMM);
+        float sunSide = 0.35 + 0.65 * clamp(dot(Nw, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
+        float rimK = pow(1.0 - ndv, 3.0) * sunSide * uRim * ${rim.toFixed(2)};
+        outgoingLight += uRimColor * rimK * (0.35 + base);
+        ${leaf ? `float back = clamp(-dot(Nw, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
+        outgoingLight += diffuseColor.rgb * uSunColor * back * 0.16 * (1.0 - uNight);` : ''}
+      }
+      #include <opaque_fragment>`);
+    }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `mm_${wind}_${see}_${snow}_${tex}_${clouds}_${grain}`;
+  mat.customProgramCacheKey = () => `mm_${wind}_${see}_${snow}_${tex}_${clouds}_${grain}_${bend}_${rim}_${leaf}`;
 }
 
 const cache = new Map<string, THREE.Material>();

@@ -15,7 +15,8 @@ export type RegionId =
   | 'ember'
   | 'mine'
   | 'house'
-  | 'hamlet';
+  | 'hamlet'
+  | 'highlands';
 export type ToolId = 'hoe' | 'can' | 'axe' | 'pickaxe' | 'rod' | 'sickle';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'mythic';
 
