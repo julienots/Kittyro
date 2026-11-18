@@ -30,6 +30,9 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
     prev.call(mat, shader, renderer);
     shader.uniforms.uWet = globalUniforms.uWet;
     shader.uniforms.uSunDirW = globalUniforms.uSunDir;
+    shader.uniforms.uTimeR = globalUniforms.uTime;
+    shader.uniforms.uDay = globalUniforms.uDay;
+    shader.uniforms.uCloudShadow = globalUniforms.uCloudShadow;
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>
       varying vec3 vRealW;`);
     vs = vs.replace('#include <project_vertex>', `#include <project_vertex>
@@ -41,7 +44,7 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
     shader.vertexShader = vs;
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>
       ${REAL_COMMON}
-      uniform float uWet; uniform vec3 uSunDirW;`);
+      uniform float uWet; uniform vec3 uSunDirW; uniform float uTimeR; uniform float uDay; uniform float uCloudShadow;`);
     // albedo variation & grime in crevices (low areas get darker / dirtier)
     fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
       {
@@ -53,6 +56,20 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
         float l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
         diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, 0.88) * 0.86;
         diffuseColor.rgb *= mix(1.0, 0.62, uWet * ${kind.skin ? '0.0' : '1.0'});
+        ${kind.terrain || kind.foliage ? `
+        // natural vegetation: pull neon greens toward olive, sprinkle sun-dried straw patches
+        {
+          vec3 c = diffuseColor.rgb;
+          float green = smoothstep(0.015, 0.12, c.g - max(c.r, c.b));
+          float lg = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          vec3 olive = mix(vec3(lg), c, 0.75) * vec3(0.92, 0.84, 0.55) * mix(0.85, 1.05, rNoise(vRealW * 0.7));
+          c = mix(c, olive, green * 0.7);
+          float dry = smoothstep(0.5, 0.72, rFbm(vRealW * 0.18 + 11.0)) * green;
+          c = mix(c, c * vec3(1.45, 1.05, 0.55), dry * 0.35);
+          float lush = smoothstep(0.55, 0.75, rFbm(vRealW * 0.25 - 4.0)) * green;
+          c = mix(c, c * vec3(0.75, 0.9, 0.7), lush * 0.5);
+          diffuseColor.rgb = c;
+        }` : ''}
       }`);
     fs = fs.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = clamp(roughnessFactor * mix(0.75, 1.15, rNoise(vRealW * 5.0)) - uWet * ${kind.skin ? '0.0' : '0.45'}, 0.05, 1.0);`);
@@ -66,6 +83,22 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
         vec3 gv = (viewMatrix * vec4(grad, 0.0)).xyz;
         normal = normalize(normal - (gv - dot(gv, normal) * normal) * ${bump.toFixed(3)} * 0.12);
       }`);
+    // moving cloud shadows sweeping over the land in daylight
+    fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+      if (uCloudShadow > 0.001) {
+        vec2 cp = vRealW.xz * 0.035 + vec2(uTimeR * 0.012, uTimeR * 0.007);
+        float cn = rFbm(vec3(cp, 0.5)) + 0.25 * rNoise(vec3(cp * 4.0, 1.5));
+        float cs = smoothstep(0.5, 0.68, cn) * uCloudShadow;
+        reflectedLight.directDiffuse *= 1.0 - cs * 0.6;
+        reflectedLight.directSpecular *= 1.0 - cs * 0.8;
+      }
+      ${kind.terrain || kind.foliage ? `
+      // sky-light sheen on vegetation at grazing angles (dew / waxy blades)
+      {
+        vec3 vDirS = normalize(cameraPosition - vRealW);
+        float graze = pow(1.0 - clamp(dot(vDirS, vec3(0.0, 1.0, 0.0)), 0.0, 1.0), 4.0);
+        reflectedLight.indirectSpecular += vec3(0.6, 0.75, 0.9) * graze * 0.015 * uDay;
+      }` : ''}`);
     if (kind.foliage) {
       // light bleeding through leaves when backlit by the sun
       fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
@@ -151,7 +184,7 @@ export class SkyEnvironment {
     this.rt?.dispose();
     this.rt = next;
     scene.environment = next.texture;
-    scene.environmentIntensity = 0.55;
+    scene.environmentIntensity = 0.5 + 0.15 * globalUniforms.uDay.value;
   }
 
   dispose(scene: THREE.Scene): void {

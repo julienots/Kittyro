@@ -185,7 +185,9 @@ export class SkyRig {
     const dayT = ((minute % 1440) - 360) / (1200 - 360);
     const ang = Math.PI * Math.min(1, Math.max(0, dayT));
     const night = k.night > 0.6;
-    if (!night) st.sunDir.set(Math.cos(ang) * 0.8, Math.max(0.45, Math.sin(ang)), -0.55).normalize();
+    const real = globalUniforms.uReal.value > 0.5;
+    if (!night && real) st.sunDir.set(Math.cos(ang) * 0.95, 0.32 + Math.sin(ang) * 0.42, -0.62).normalize(); // lower sun -> long, sculpting shadows
+    else if (!night) st.sunDir.set(Math.cos(ang) * 0.8, Math.max(0.45, Math.sin(ang)), -0.55).normalize();
     else st.sunDir.set(-0.4, 0.8, -0.5).normalize(); // moonlight
     const over = this.overcast;
     const dim = 1 - over * 0.45 - this.storm * 0.2;
@@ -225,15 +227,22 @@ export class SkyRig {
     if (globalUniforms.uReal.value > 0.5 && this.indoor === 'none') {
       // physically flavoured rig: strong HDR sun, sky light comes mostly from the IBL
       const day = 1 - st.night;
-      this.sun.intensity *= 2.2 + 0.6 * st.night;
-      this.hemi.intensity *= 2.4 - 1.9 * day;
+      this.sun.intensity *= 2.2 + 0.25 * day + 0.6 * st.night;
+      this.hemi.intensity *= 2.4 - 2.05 * day;
       this.ambient.intensity *= 3.0 - 2.7 * day;
-      this.sun.shadow.radius = 4;
+      this.sun.shadow.radius = 3;
+      // warm direct sun vs cool sky fill: the key to a believable daylight
+      this.sun.color.lerp(new THREE.Color(1.0, 0.86, 0.68), 0.35 * day * (1 - over));
+      this.hemi.color.lerp(new THREE.Color(0.55, 0.72, 1.0), 0.4 * day);
+      this.hemi.groundColor.lerp(new THREE.Color(0.42, 0.4, 0.26), 0.5 * day);
     } else if (globalUniforms.uReal.value > 0.5) {
       this.sun.intensity *= 1.8;
       this.hemi.intensity *= this.indoor === 'cave' ? 2.4 : 1.5;
       this.ambient.intensity *= 2.5;
     }
+    const dayL = this.indoor === 'none' ? 1 - st.night : 0;
+    globalUniforms.uDay.value = dayL;
+    globalUniforms.uCloudShadow.value = this.indoor === 'none' ? dayL * (0.55 + over * 0.45) * (1 - this.storm * 0.5) : 0;
     globalUniforms.uSunDir.value.copy(st.sunDir);
     globalUniforms.uSunColor.value.copy(this.sun.color).multiplyScalar(Math.max(0.15, 1 - st.night * 0.8));
     st.below.copy(tc(k.below));

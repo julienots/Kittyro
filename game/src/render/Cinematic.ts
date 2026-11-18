@@ -156,8 +156,8 @@ const FINAL_FRAG = /* glsl */ `
     vec3 shadowT = mix(vec3(0.94, 1.0, 1.08), vec3(0.85, 0.95, 1.2), uNight);
     vec3 highT = vec3(1.06, 1.01, 0.93);
     col *= mix(shadowT, highT, smoothstep(0.1, 0.8, l));
-    col = mix(vec3(l), col, 1.0);
-    col = clamp((col - 0.5) * 1.06 + 0.5, 0.0, 1.0);
+    col = mix(vec3(l), col, 0.98);
+    col = clamp((col - 0.5) * (1.06 + 0.06 * (1.0 - uNight)) + 0.5, 0.0, 1.0);
     // lens vignette
     col *= 1.0 - smoothstep(0.35, 0.95, length(q * vec2(uRes.x / uRes.y, 1.0)) * 0.9) * 0.45;
     // film grain (luma weighted) and dithering against banding
@@ -278,6 +278,9 @@ export class Cinematic {
     cu.uRays.value = facing * (1 - this.overcast * 0.85) * (0.35 + (1 - this.night) * 1.4);
     (cu.uHaze.value as THREE.Color).copy(this.haze);
     cu.uHazeK.value = 0.01 + this.overcast * 0.02;
+    const day = globalUniforms.uDay.value;
+    cu.uAo.value = 0.85 + 0.12 * day;
+    this.aoMat.uniforms.uIntensity.value = 2.2 + 0.9 * day;
     this.pass(r, this.compMat, this.compRT);
     // 5. bloom (composited back into compRT)
     this.bloom.strength = 0.28 + this.night * 0.45;

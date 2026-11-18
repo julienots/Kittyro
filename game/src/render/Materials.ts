@@ -16,6 +16,8 @@ export const globalUniforms = {
   uWet: { value: 0 },
   uSnow: { value: 0 },
   uReal: { value: 0 },
+  uDay: { value: 1 }, // outdoor daylight 0..1 (0 indoors)
+  uCloudShadow: { value: 0 },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunColor: { value: new THREE.Color(1, 1, 1) },
 };
