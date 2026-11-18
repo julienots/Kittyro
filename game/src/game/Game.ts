@@ -112,6 +112,7 @@ export class Game implements GameApi {
     const scene = this.renderer.scene;
     scene.add(this.sky.group, this.particles.group, this.weatherFx.group);
     this.sky.setShadowSize(this.renderer.profile.shadow);
+    this.renderer.skyDome = this.sky.dome;
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
     this.tapMarker = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.36, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
@@ -144,6 +145,11 @@ export class Game implements GameApi {
       this.renderer.applyQuality(this.settings.quality);
       this.sky.setShadowSize(this.renderer.profile.shadow);
       this.particles.budget = this.renderer.profile.particles;
+      if (this.player) {
+        this.player.outline = this.renderer.profile.outlines;
+        this.player.rebuild();
+        this.entities.outline = this.renderer.profile.outlines;
+      }
       if (this.ctx) this.loadRegion(this.world.region, null, true);
     }
     this.renderer.autoQuality = this.settings.autoQuality;
@@ -589,6 +595,14 @@ export class Game implements GameApi {
     this.tapMarker.scale.setScalar(1 + (0.6 - tm.opacity));
     this.ui.update(dt);
     this.renderer.trackFps(dt);
+    const cine = this.renderer.cine;
+    if (cine) {
+      cine.haze.copy(this.sky.state.fog);
+      cine.night = this.sky.state.night;
+      cine.overcast = this.sky.overcast;
+      cine.dof = this.title ? 1.4 : 1;
+      cine.exposure = this.world.region === 'mine' ? 1.1 : 0.78 + this.sky.state.night * 0.7;
+    }
     this.renderer.render();
     (window as any).__frames = ((window as any).__frames ?? 0) + 1;
   }

@@ -274,6 +274,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
       }`,
     fragmentShader: `
       uniform vec3 uColor; uniform vec3 uDeep; uniform float uTime; uniform float uLight; uniform vec3 uSky;
+      uniform float uReal; uniform vec3 uSunDir; uniform vec3 uSunColor;
       varying float vShore; varying vec3 vW;
       #include <fog_pars_fragment>
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
@@ -288,11 +289,47 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
         col += sp*0.5*uLight;
         col *= mix(0.45, 1.0, uLight);
         col = mix(col, uSky, 0.08);
-        gl_FragColor = vec4(col, 0.84 + foam*0.12);
+        float alpha = 0.84 + foam*0.12;
+        if (uReal > 0.5) {
+          // analytic wave normals (sum of directional sines) -> fresnel sky reflection + HDR sun glint
+          vec2 p = vW.xz; float t = uTime;
+          vec2 gsum = vec2(0.0);
+          vec2 dirs[5]; dirs[0]=vec2(0.8,0.6); dirs[1]=vec2(-0.5,0.85); dirs[2]=vec2(0.95,-0.3); dirs[3]=vec2(-0.2,-0.98); dirs[4]=vec2(0.6,-0.8);
+          float fr[5]; fr[0]=1.3; fr[1]=2.1; fr[2]=3.7; fr[3]=5.9; fr[4]=9.3;
+          for (int i = 0; i < 5; i++){
+            float ph = dot(dirs[i], p) * fr[i] + t * (1.2 + float(i) * 0.45);
+            gsum += dirs[i] * cos(ph) * 0.03;
+          }
+          vec3 n = normalize(vec3(-gsum.x, 1.0, -gsum.y));
+          vec3 v = normalize(cameraPosition - vW);
+          float fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+          vec3 r = reflect(-v, n);
+          #ifdef USE_FOG
+            vec3 skyBase = fogColor;
+          #else
+            vec3 skyBase = uSky;
+          #endif
+          float lk = clamp(dot(uSunColor, vec3(0.33)) * 1.2, 0.25, 1.0);
+          vec3 skyR = mix(skyBase * 0.7, skyBase * 0.95 + vec3(0.02, 0.05, 0.1), clamp(r.y, 0.0, 1.0));
+          vec3 body = mix(uDeep * 0.55, uColor * 0.8, 0.35 + 0.3 * ripple) * mix(0.35, 1.0, lk);
+          // subsurface: light scattering through wave crests
+          float sss = pow(max(dot(v, -normalize(uSunDir + vec3(0.0, -0.4, 0.0))), 0.0), 3.0) * max(0.0, gsum.x + gsum.y) * 2.0;
+          body += uColor * vec3(0.3, 0.9, 0.8) * sss * 0.35 * lk;
+          vec3 rc = mix(body, skyR, fres);
+          float spec = pow(max(dot(r, normalize(uSunDir)), 0.0), 380.0) * 60.0 + pow(max(dot(r, normalize(uSunDir)), 0.0), 140.0) * 0.25;
+          rc += uSunColor * spec;
+          rc = mix(rc, vec3(1.0), foam * 0.75);
+          col = rc;
+          alpha = mix(0.82, 0.97, fres) + foam * 0.1;
+        }
+        gl_FragColor = vec4(col, alpha);
         #include <fog_fragment>
       }`,
   });
   m.uniforms.uTime = globalUniforms.uTime;
+  m.uniforms.uReal = globalUniforms.uReal;
+  m.uniforms.uSunDir = globalUniforms.uSunDir;
+  m.uniforms.uSunColor = globalUniforms.uSunColor;
   return m;
 }
 
@@ -308,18 +345,20 @@ export function lavaMaterial(): THREE.ShaderMaterial {
         #include <fog_vertex>
       }`,
     fragmentShader: `
-      varying vec3 vW; uniform float uTime;
+      varying vec3 vW; uniform float uTime; uniform float uReal;
       #include <fog_pars_fragment>
       void main(){
         float n = sin(vW.x*1.7 + uTime*0.6) * sin(vW.z*1.3 - uTime*0.5) + sin((vW.x+vW.z)*3.1 + uTime*1.4)*0.4;
         vec3 hot = vec3(1.0, 0.75, 0.25), mid = vec3(1.0, 0.35, 0.08), crust = vec3(0.35, 0.08, 0.05);
         vec3 col = mix(mid, hot, smoothstep(0.2, 0.9, n));
         col = mix(col, crust, smoothstep(-0.5, -0.9, n));
+        col *= mix(1.0, 3.5, uReal * smoothstep(0.0, 0.9, n));
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
       }`,
   });
   m.uniforms.uTime = globalUniforms.uTime;
+  m.uniforms.uReal = globalUniforms.uReal;
   return m;
 }
 

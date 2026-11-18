@@ -15,6 +15,9 @@ export const globalUniforms = {
   uAspect: { value: 1 },
   uWet: { value: 0 },
   uSnow: { value: 0 },
+  uReal: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+  uSunColor: { value: new THREE.Color(1, 1, 1) },
 };
 
 let gradientMap: THREE.DataTexture | null = null;

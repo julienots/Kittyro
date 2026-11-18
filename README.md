@@ -6,18 +6,34 @@ créatures, décorer sa ferme et sa maison — à son rythme, sans pression, **s
 
 ![icône](docs/icon-512.png)
 
+## Graphismes « Réaliste » (v1.1)
+
+Nouvelle qualité graphique **RÉALISTE** (Menu ⚙️ → Qualité graphique), activée par défaut sur
+les appareils puissants :
+
+- matériaux PBR (MeshStandard) avec micro-relief, variations d'albédo et de rugosité procédurales,
+  surfaces mouillées sous la pluie, translucidité du feuillage à contre-jour
+- éclairage HDR : soleil intense, éclairage d'environnement (IBL) recapturé depuis le ciel,
+  ombres 4096 px adoucies
+- ciel atmosphérique : diffusion Mie, disque solaire HDR, couche de nuages volumétriques
+- eau : normales de vagues, réflexion de Fresnel, reflets du soleil, diffusion sous la surface
+- post-traitement cinéma : SSAO, rayons de soleil volumétriques, bloom, profondeur de champ
+  bokeh, aberration chromatique, tone mapping ACES, étalonnage, vignettage, grain
+
+Code : `game/src/render/Realism.ts` (matériaux) et `game/src/render/Cinematic.ts` (pipeline).
+
 ## Télécharger / installer
 
 Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.0.0-debug.apk` | APK de test (debuggable, signé clé debug) |
-| `mossy-meadows-1.0.0-release.apk` | APK release signé |
-| `mossy-meadows-1.0.0-release.aab` | Android App Bundle pour le Play Store |
+| `mossy-meadows-1.1.0-debug.apk` | APK de test (debuggable, signé clé debug) |
+| `mossy-meadows-1.1.0-release.apk` | APK release signé |
+| `mossy-meadows-1.1.0-release.aab` | Android App Bundle pour le Play Store |
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.0.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.1.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 

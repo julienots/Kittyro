@@ -531,7 +531,7 @@ function settings(ui: UI): void {
     chips<ControlMode>([['both', 'Joystick + toucher'], ['joystick', 'Joystick'], ['tap', 'Toucher pour aller']], s.controls, (v) => set('controls', v)),
     h('div.row', { style: { marginTop: '6px' } }, h(`button.chip${s.leftHanded ? '.on' : ''}`, { onclick: () => set('leftHanded', !s.leftHanded) }, '🫲 Mode gaucher'), h(`button.chip${s.haptics ? '.on' : ''}`, { onclick: () => set('haptics', !s.haptics) }, '📳 Vibrations')),
     h('h3', null, '✨ Qualité graphique'),
-    chips<Quality>([['low', 'LOW'], ['medium', 'MEDIUM'], ['high', 'HIGH'], ['ultra', 'ULTRA']], s.quality, (v) => set('quality', v)),
+    chips<Quality>([['low', 'LOW'], ['medium', 'MEDIUM'], ['high', 'HIGH'], ['ultra', 'ULTRA'], ['realistic', 'RÉALISTE']], s.quality, (v) => set('quality', v)),
     h('div.row', { style: { marginTop: '6px' } }, h(`button.chip${s.autoQuality ? '.on' : ''}`, { onclick: () => set('autoQuality', !s.autoQuality) }, '⚡ Résolution adaptative'), h(`button.chip${s.showFps ? '.on' : ''}`, { onclick: () => set('showFps', !s.showFps) }, '📈 Afficher FPS')),
     h('h3', null, '🎵 Son'),
     h('div.col', null, h('span.muted', null, 'Musique'), slider('music'), h('span.muted', null, 'Effets'), slider('sfx'), h('span.muted', null, 'Ambiance'), slider('ambience')),

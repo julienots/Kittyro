@@ -2,7 +2,7 @@
 import { chromium } from 'playwright-core';
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const out = 'e2e/out';
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });
@@ -10,6 +10,7 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));
 const shot = (n) => page.screenshot({ path: `${out}/${n}.png` });
 const wait = (ms) => page.waitForTimeout(ms);
 const frames = async (n) => { const f = await page.evaluate(() => window.__frames ?? 0); await page.waitForFunction((t) => (window.__frames ?? 0) >= t, f + n, { timeout: 60000 }); };
+if (process.env.Q) await page.addInitScript((q) => localStorage.setItem('mm_settings', JSON.stringify({ quality: q })), process.env.Q);
 await page.goto(url);
 await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
 await frames(5);

@@ -25,6 +25,7 @@ export function debugBoot(): void {
   const ctx = new Ctx(st);
   const sky = new SkyRig();
   r.scene.add(sky.group);
+  r.skyDome = sky.dome;
   const parts = new Particles();
   r.scene.add(parts.group);
   const world = new World(ctx, parts, () => r.profile.grass, () => r.profile.lights);

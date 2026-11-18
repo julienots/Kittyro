@@ -2,7 +2,7 @@
 import { chromium } from 'playwright-core';
 const [url, out, frames = '30', w = '1280', h = '720'] = process.argv.slice(2);
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: '/opt/pw-browsers/chromium',
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: +w, height: +h } });
@@ -16,5 +16,5 @@ try {
 await page.screenshot({ path: out });
 const info = await page.evaluate(() => window.__info);
 console.log('info:', info);
-console.log(logs.slice(0, 40).join('\n'));
+console.log(logs.filter((l) => !l.includes("GL Driver")).slice(0, 60).join('\n'));
 await browser.close();

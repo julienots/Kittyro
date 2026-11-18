@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mixHex } from '../core/MathUtil';
+import { globalUniforms } from './Materials';
 
 /**
  * Sky dome + sea of clouds below the floating diorama, stars & moon at night,
@@ -66,7 +67,7 @@ export class SkyRig {
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   readonly ambient: THREE.AmbientLight;
-  private dome: THREE.Mesh;
+  readonly dome: THREE.Mesh;
   private domeMat: THREE.ShaderMaterial;
   state: LightState = { night: 0, sunDir: new THREE.Vector3(), fog: new THREE.Color(), below: new THREE.Color() };
   overcast = 0; // 0..1 from weather
@@ -92,16 +93,17 @@ export class SkyRig {
       depthWrite: false,
       uniforms: {
         uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uBelow: { value: new THREE.Color() },
-        uNight: { value: 0 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uAurora: { value: 0 }, uOvercast: { value: 0 },
+        uNight: { value: 0 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uAurora: { value: 0 }, uOvercast: { value: 0 }, uReal: globalUniforms.uReal,
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 uZenith, uHorizon, uBelow; uniform float uNight, uTime, uAurora, uOvercast; uniform vec3 uSunDir;
+        uniform vec3 uZenith, uHorizon, uBelow; uniform float uNight, uTime, uAurora, uOvercast, uReal; uniform vec3 uSunDir;
         varying vec3 vDir;
         float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           float a=hash(vec3(i,0.)), b=hash(vec3(i+vec2(1,0),0.)), c=hash(vec3(i+vec2(0,1),0.)), d=hash(vec3(i+vec2(1,1),0.));
           return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
+        float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; } return s; }
         void main(){
           vec3 d = normalize(vDir);
           vec3 col;
@@ -129,6 +131,32 @@ export class SkyRig {
             col += mix(vec3(0.2, 1.0, 0.6), vec3(0.6, 0.3, 1.0), a) * band * uAurora * 0.5 * noise(vec2(d.x * 8.0 + uTime * 0.2, d.z * 3.0));
           }
           col = mix(col, vec3(dot(col, vec3(0.33))), uOvercast * 0.45);
+          if (uReal > 0.5) {
+            vec3 sdir = normalize(uSunDir);
+            float mu = dot(d, sdir);
+            float day = 1.0 - uNight;
+            // Rayleigh-ish brightening near the horizon + Henyey-Greenstein Mie halo
+            float hz = 1.0 - abs(d.y);
+            col *= 1.0 + pow(hz, 6.0) * 0.35 * day;
+            float g = 0.82;
+            float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) / 12.566;
+            vec3 sunTint = mix(vec3(1.0, 0.55, 0.25), vec3(1.0, 0.95, 0.85), smoothstep(0.0, 0.5, sdir.y));
+            col += sunTint * hg * 1.6 * day * (1.0 - uOvercast * 0.7);
+            // HDR sun disk (feeds bloom + light shafts); a cool moon at night
+            float disk = smoothstep(0.9994, 0.9998, mu);
+            col += mix(sunTint * 40.0 * day, vec3(0.8, 0.85, 1.0) * 6.0, uNight) * disk * (1.0 - uOvercast * 0.9);
+            // volumetric-looking cumulus layer above the island
+            if (d.y > 0.02) {
+              vec2 cuv = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.012, uTime * 0.006);
+              float cn = fbm(cuv);
+              float cover = mix(0.52, 0.32, uOvercast);
+              float cd = smoothstep(cover, cover + 0.28, cn);
+              float lit = clamp(fbm(cuv + sdir.xz * 0.08) - cn + 0.55, 0.0, 1.0);
+              vec3 cloudLit = mix(uHorizon * 0.65, vec3(1.0) * mix(1.0, 0.25, uNight), lit) + sunTint * hg * 0.6 * day;
+              col = mix(col, cloudLit, cd * smoothstep(0.02, 0.2, d.y) * 0.9);
+            }
+            col *= mix(1.2, 1.0, uNight);
+          }
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -194,6 +222,20 @@ export class SkyRig {
       this.ambient.intensity = 0.18 + this.flash;
       st.fog.copy(tc(k.fog)).lerp(new THREE.Color(0xc8ccd4), over * 0.5);
     }
+    if (globalUniforms.uReal.value > 0.5 && this.indoor === 'none') {
+      // physically flavoured rig: strong HDR sun, sky light comes mostly from the IBL
+      const day = 1 - st.night;
+      this.sun.intensity *= 2.2 + 0.6 * st.night;
+      this.hemi.intensity *= 2.4 - 1.9 * day;
+      this.ambient.intensity *= 3.0 - 2.7 * day;
+      this.sun.shadow.radius = 4;
+    } else if (globalUniforms.uReal.value > 0.5) {
+      this.sun.intensity *= 1.8;
+      this.hemi.intensity *= this.indoor === 'cave' ? 2.4 : 1.5;
+      this.ambient.intensity *= 2.5;
+    }
+    globalUniforms.uSunDir.value.copy(st.sunDir);
+    globalUniforms.uSunColor.value.copy(this.sun.color).multiplyScalar(Math.max(0.15, 1 - st.night * 0.8));
     st.below.copy(tc(k.below));
     this.sun.position.copy(focus).addScaledVector(st.sunDir, 30);
     this.sun.target.position.copy(focus);

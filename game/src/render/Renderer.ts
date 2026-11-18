@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { Quality } from '../save/Settings';
 import { globalUniforms } from './Materials';
+import { Cinematic } from './Cinematic';
+import { realifyScene, SkyEnvironment } from './Realism';
 
 export interface QualityProfile {
   pixelRatio: number;
@@ -12,6 +14,7 @@ export interface QualityProfile {
   lights: number; // max dynamic point lights at night
   antialias: boolean;
   drawDistance: number;
+  realistic?: boolean; // PBR materials + cinematic HDR pipeline
 }
 
 export const QUALITY: Record<Quality, QualityProfile> = {
@@ -19,6 +22,7 @@ export const QUALITY: Record<Quality, QualityProfile> = {
   medium: { pixelRatio: 1.25, shadow: 1024, post: false, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 55 },
   high: { pixelRatio: 1.75, shadow: 2048, post: true, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 70 },
   ultra: { pixelRatio: 2.25, shadow: 4096, post: true, particles: 1, grass: 1.4, outlines: true, lights: 6, antialias: true, drawDistance: 90 },
+  realistic: { pixelRatio: 2, shadow: 4096, post: true, particles: 1, grass: 1.6, outlines: false, lights: 8, antialias: true, drawDistance: 110, realistic: true },
 };
 
 /** Tilt-shift "miniature" post effect with warm grading and vignette. */
@@ -83,6 +87,10 @@ export class Renderer {
   profile: QualityProfile;
   quality: Quality;
   private post: TiltShift | null = null;
+  cine: Cinematic | null = null;
+  private env: SkyEnvironment | null = null;
+  skyDome: THREE.Mesh | null = null;
+  private lastDt = 1 / 60;
   private dynScale = 1;
   private fpsAcc = 0;
   private fpsFrames = 0;
@@ -97,10 +105,25 @@ export class Renderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = this.profile.shadow > 0;
-    this.renderer.shadowMap.type = quality === 'medium' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 600);
     this.scene.fog = new THREE.Fog(0xe0f0f8, 42, this.profile.drawDistance + 20);
+    this.applyRealism();
     this.resize();
+  }
+
+  get realistic(): boolean {
+    return !!this.profile.realistic;
+  }
+
+  private applyRealism(): void {
+    const real = this.realistic;
+    globalUniforms.uReal.value = real ? 1 : 0;
+    if (real && !this.env) this.env = new SkyEnvironment(this.renderer);
+    if (!real && this.env) {
+      this.env.dispose(this.scene);
+      this.env = null;
+    }
   }
 
   applyQuality(q: Quality): void {
@@ -110,6 +133,7 @@ export class Renderer {
     this.renderer.shadowMap.needsUpdate = true;
     if (this.scene.fog instanceof THREE.Fog) this.scene.fog.far = this.profile.drawDistance + 20;
     this.dynScale = 1;
+    this.applyRealism();
     // materials must recompile for shadow changes
     this.scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
@@ -130,6 +154,14 @@ export class Renderer {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     globalUniforms.uAspect.value = w / h;
+    if (this.realistic) {
+      const pw = Math.floor(w * this.pixelRatio), ph = Math.floor(h * this.pixelRatio);
+      if (this.post) { this.post.rt.dispose(); this.post = null; }
+      if (!this.cine) this.cine = new Cinematic(pw, ph, 4);
+      else this.cine.setSize(pw, ph);
+      return;
+    }
+    if (this.cine) { this.cine.dispose(); this.cine = null; }
     if (this.profile.post) {
       const pw = Math.floor(w * this.pixelRatio), ph = Math.floor(h * this.pixelRatio);
       if (!this.post) this.post = new TiltShift(pw, ph, this.quality === 'ultra' ? 4 : 2);
@@ -146,6 +178,7 @@ export class Renderer {
 
   /** Track FPS and adapt resolution on slow devices. */
   trackFps(dt: number): void {
+    this.lastDt = dt;
     this.fpsAcc += dt;
     this.fpsFrames++;
     if (this.fpsAcc < 1.5) return;
@@ -168,6 +201,12 @@ export class Renderer {
   }
 
   render(): void {
+    if (this.cine) {
+      realifyScene(this.scene);
+      this.env?.update(this.lastDt, this.scene, this.skyDome);
+      this.cine.render(this.renderer, this.scene, this.camera);
+      return;
+    }
     if (this.post) {
       this.renderer.setRenderTarget(this.post.rt);
       this.renderer.render(this.scene, this.camera);
