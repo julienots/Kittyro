@@ -17,8 +17,10 @@ import { FARM_THEMES } from '../data/shop';
 import type { Particles } from '../render/Particles';
 import { FarmView } from './FarmView';
 import { HouseView } from './HouseView';
+import { HamletView } from './HamletView';
 import type { MineFloor } from '../systems/Mining';
 import { Random } from '../core/Random';
+import { placementsFor, worldModel } from '../models/External';
 
 export interface Interactable {
   id: string;
@@ -63,10 +65,12 @@ export class World {
   interactables: Interactable[] = [];
   farm: FarmView | null = null;
   house: HouseView | null = null;
+  hamlet: HamletView | null = null;
   mineFloor: MineFloor | null = null;
   waterfalls: THREE.Mesh[] = [];
   private pointLights: THREE.PointLight[] = [];
   private dynBlocked: Uint8Array = new Uint8Array(0);
+  private swimOk: Uint8Array = new Uint8Array(0);
   private smokeTimer = 0;
 
   constructor(private ctx: Ctx, private particles: Particles, private qualityGrass: () => number, private maxLights: () => number) {
@@ -80,7 +84,8 @@ export class World {
     this.propBatch = new InstanceBatch((key) => {
       const g = staticPropGeo(key, season(), this.region);
       if (!g) return null;
-      return { geo: g.geo, mat: key.startsWith('tree:') || key === 'fern' ? foliageMat() : propMat() };
+      const soft = key === 'wildflowers' || key === 'tall_grass';
+      return { geo: g.geo, mat: soft ? vcMat({ wind: 0.22, bend: true, foliage: true }) : key.startsWith('tree:') || key === 'fern' ? foliageMat() : propMat(), shadow: soft ? false : undefined };
     });
     this.glowBatch = new InstanceBatch((key) => {
       const g = staticPropGeo(key, season(), this.region);
@@ -110,16 +115,24 @@ export class World {
     }
     if (this.terrain.water) this.root.add(this.terrain.water);
     if (this.terrain.lava) this.root.add(this.terrain.lava);
+    if (this.terrain.outskirts) this.root.add(this.terrain.outskirts);
     this.root.add(this.nodeBatch.group, this.propBatch.group, this.glowBatch.group, this.grassBatch.group);
     this.dynBlocked = new Uint8Array(this.layout.w * this.layout.d);
+    this.computeSwimmable();
     this.buildProps();
     this.buildGrass();
     this.buildStructures();
+    this.buildCustomModels();
     this.buildNodes();
     if (region === 'farm') {
       this.farm = new FarmView(this.ctx, this, this.particles);
       this.root.add(this.farm.group);
       this.farm.build();
+    }
+    if (region === 'hamlet') {
+      this.hamlet = new HamletView(this.ctx, this, this.particles);
+      this.root.add(this.hamlet.group);
+      this.hamlet.build();
     }
     if (region === 'house') {
       this.house = new HouseView(this.ctx, this);
@@ -135,6 +148,8 @@ export class World {
     this.farm = null;
     this.house?.dispose();
     this.house = null;
+    this.hamlet?.dispose();
+    this.hamlet = null;
     for (const s of this.structures) {
       s.obj.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -152,6 +167,7 @@ export class World {
       this.terrain.skirt.geometry.dispose();
       this.terrain.water?.geometry.dispose();
       this.terrain.lava?.geometry.dispose();
+      this.terrain.outskirts?.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     }
     this.nodeBatch.dispose();
     this.propBatch.dispose();
@@ -193,10 +209,25 @@ export class World {
     return L.blocked[i] === 1 || this.dynBlocked[i] === 1;
   }
 
-  /** Circle collision test for movement. */
-  isBlocked(x: number, z: number, r = 0.28): boolean {
+  /** Open water the player can swim in (lakes, rivers, sea), not lava nor under buildings. */
+  isSwimTile(x: number, z: number): boolean {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    const L = this.layout;
+    if (!this.swimOk.length || tx < 0 || tz < 0 || tx >= L.w || tz >= L.d) return false;
+    return this.swimOk[tz * L.w + tx] === 1;
+  }
+
+  /** Circle collision test for movement. `pass.swim` lets the player enter water, `pass.air` clears it mid-jump. */
+  isBlocked(x: number, z: number, r = 0.28, pass?: { swim?: boolean; air?: boolean }): boolean {
+    const L = this.layout;
     for (const [ox, oz] of [[r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, -r * 0.7]]) {
-      if (this.blockedTile(Math.floor(x + ox), Math.floor(z + oz))) return true;
+      const tx = Math.floor(x + ox), tz = Math.floor(z + oz);
+      if (!this.blockedTile(tx, tz)) continue;
+      if (pass && (pass.swim || pass.air) && tx >= 0 && tz >= 0 && tx < L.w && tz < L.d) {
+        const i = tz * L.w + tx;
+        if (this.swimOk[i] === 1 && this.dynBlocked[i] !== 1) continue;
+      }
+      return true;
     }
     // round obstacles (trees, rocks)
     for (const nv of this.nodes) {
@@ -211,6 +242,23 @@ export class World {
     return false;
   }
 
+  private computeSwimmable(): void {
+    const L = this.layout;
+    const ok = new Uint8Array(L.w * L.d);
+    if (!L.indoor || this.region === 'mine') {
+      for (let i = 0; i < ok.length; i++) if (L.tiles[i] === T.WATER || L.tiles[i] === T.DEEP) ok[i] = 1;
+      for (const s of L.structures) {
+        if (s.blocks === false) continue;
+        for (let x = s.x; x < s.x + s.w; x++) for (let z = s.z; z < s.z + s.d; z++) if (x >= 0 && z >= 0 && x < L.w && z < L.d) ok[z * L.w + x] = 0;
+      }
+      for (const p of L.props) if (p.blocks) { const i = Math.floor(p.z) * L.w + Math.floor(p.x); if (i >= 0 && i < ok.length) ok[i] = 0; }
+      // never swim out through the map border
+      for (let x = 0; x < L.w; x++) { ok[x] = 0; ok[(L.d - 1) * L.w + x] = 0; }
+      for (let z = 0; z < L.d; z++) { ok[z * L.w] = 0; ok[z * L.w + L.w - 1] = 0; }
+    }
+    this.swimOk = ok;
+  }
+
   recomputeDynamicBlocked(): void {
     const L = this.layout;
     this.dynBlocked.fill(0);
@@ -222,6 +270,7 @@ export class World {
     }
     this.farm?.markBlocked(this.dynBlocked, L.w);
     this.house?.markBlocked(this.dynBlocked, L.w);
+    this.hamlet?.markBlocked(this.dynBlocked, L.w);
   }
 
   isWaterTile(tx: number, tz: number): boolean {
@@ -462,7 +511,7 @@ export class World {
           const restored = !!st.village[s.id!]?.restored;
           model = villageBuildingModel(def.style, s.w, s.d, def.roof, def.wall, restored);
           const g = new THREE.Group();
-          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true }));
+          const m = new THREE.Mesh(model.geo, vcMat({ seeThrough: true, snowCap: true, textured: true }));
           m.castShadow = m.receiveShadow = true;
           g.add(m);
           if (model.windows) g.add(new THREE.Mesh(model.windows, windowMat));
@@ -477,6 +526,27 @@ export class World {
           obj.position.set(cx, y, cz);
           this.firePoints.push(new THREE.Vector3(cx, y + 0.2, cz));
           this.lightPoints.push(new THREE.Vector3(cx, y + 0.8, cz));
+          break;
+        case 'windmill': {
+          const g = new THREE.Group();
+          const body = new THREE.Mesh(structureGeo('windmill'), vcMat({ seeThrough: true, snowCap: true, textured: true }));
+          const sails = new THREE.Mesh(structureGeo('windmill_sails'), propMat());
+          sails.position.set(0, 4.3, 1.45);
+          g.add(body, sails);
+          g.position.set(cx, y, cz);
+          obj = g;
+          spinner = sails;
+          break;
+        }
+        case 'stone_circle':
+          obj = new THREE.Mesh(structureGeo('stone_circle'), vcMat({ seeThrough: true, snowCap: true, textured: true }));
+          obj.position.set(cx, y, cz);
+          this.lightPoints.push(new THREE.Vector3(cx, y + 0.9, cz));
+          break;
+        case 'ruin_tower':
+        case 'lookout':
+          obj = new THREE.Mesh(structureGeo(s.kind), vcMat({ seeThrough: true, snowCap: true, textured: true }));
+          obj.position.set(cx, y, cz);
           break;
         case 'lighthouse':
           obj = new THREE.Mesh(structureGeo('lighthouse'), propMat());
@@ -514,6 +584,30 @@ export class World {
         const e = new THREE.Mesh(structureGeo('elevator'), propMat());
         e.position.set(ev.x, this.heightAt(ev.x, ev.z), ev.z);
         this.root.add(e);
+      }
+    }
+  }
+
+  /** Free models from game/models/world placed with game/models/placements.json. */
+  private buildCustomModels(): void {
+    const L = this.layout;
+    for (const p of placementsFor(this.region)) {
+      const obj = worldModel(p.model);
+      if (!obj) continue;
+      const y = (p.y ?? 0) + this.heightAt(p.x, p.z);
+      obj.position.set(p.x, y, p.z);
+      obj.rotation.y = THREE.MathUtils.degToRad(p.rot ?? 0);
+      obj.scale.multiplyScalar(p.scale ?? 1);
+      this.root.add(obj);
+      const blocks = p.blocks ?? obj.userData.blocks !== false;
+      if (!blocks) continue;
+      obj.updateMatrixWorld(true);
+      const bb = new THREE.Box3().setFromObject(obj);
+      // block the footprint, slightly shrunk so small models don't block whole tiles around them
+      for (let x = Math.floor(bb.min.x + 0.25); x <= Math.floor(bb.max.x - 0.25); x++) {
+        for (let z = Math.floor(bb.min.z + 0.25); z <= Math.floor(bb.max.z - 0.25); z++) {
+          if (x >= 0 && z >= 0 && x < L.w && z < L.d) L.blocked[z * L.w + x] = 1;
+        }
       }
     }
   }
@@ -623,6 +717,8 @@ export class World {
       if (s.kind === 'mine_entrance') out.push({ id: 'mine', kind: 'mine', x: L.anchors.mine_door.x, z: L.anchors.mine_door.z - 0.6, radius: 1.6, label: 'Entrer dans la mine', icon: '⛏️' });
       if (s.kind === 'bridge' && s.id === 'woods_bridge' && s.params?.broken) out.push({ id: 'woods_bridge', kind: 'bridge', x: cx, z: s.z + s.d + 0.3, radius: 2.2, label: 'Vieux pont cassé', icon: '🌉' });
       if (s.kind === 'shrine') out.push({ id: 'shrine', kind: 'shrine', x: cx, z: s.z + 1.2, radius: 1.4, label: 'Autel de cristal', icon: '💜' });
+      if (s.kind === 'hamlet_board') out.push({ id: 'register', kind: 'register', x: cx, z: s.z + 1.6, radius: 1.5, label: 'Registre du hameau', icon: '📒' });
+      if (s.kind === 'tent' && s.id === 'traveller_tent') { out.push({ id: 'traveller', kind: 'traveller', x: cx, z: s.z + s.d + 0.5, radius: 1.4, label: 'Tente du voyageur', icon: '⛺' }); continue; }
       if (s.kind === 'tent') out.push({ id: 'camp', kind: 'camp', x: cx + 1.5, z: s.z + 2, radius: 1.5, label: 'Camp de Bibi', icon: '⛺' });
       if (s.kind === 'igloo') out.push({ id: 'igloo', kind: 'secret', x: cx, z: s.z + s.d + 0.6, radius: 1.4, label: 'Igloo mystérieux', icon: '❄️', data: { secret: 'igloo' } });
       if (s.kind === 'lighthouse') out.push({ id: 'lighthouse', kind: 'secret', x: cx, z: s.z + s.d + 0.4, radius: 1.4, label: 'Phare', icon: '🗼', data: { secret: 'lighthouse' } });
@@ -633,6 +729,13 @@ export class World {
       if (L.anchors.elevator) out.push({ id: 'elevator', kind: 'elevator', x: L.anchors.elevator.x, z: L.anchors.elevator.z, radius: 1.5, label: 'Ascenseur', icon: '🛗' });
     }
     if (this.region === 'woods') out.push({ id: 'grove_secret', kind: 'secret', x: 45, z: 11, radius: 1.8, label: 'Cercle ancien', icon: '✨', data: { secret: 'grove' } });
+    if (this.region === 'highlands') {
+      out.push({ id: 'hl_stones', kind: 'secret', x: 50, z: 16, radius: 2, label: 'Cercle de pierres', icon: '🗿', data: { secret: 'stones' } });
+      out.push({ id: 'hl_tower', kind: 'secret', x: 19.5, z: 24.4, radius: 1.6, label: 'Tour en ruine', icon: '🏰', data: { secret: 'tower' } });
+      out.push({ id: 'hl_lookout', kind: 'lookout', x: 106, z: 25.6, radius: 1.6, label: 'Tour de guet : panorama', icon: '🔭', data: { secret: 'lookout' } });
+      out.push({ id: 'hl_island', kind: 'secret', x: 37.4, z: 85.2, radius: 1.3, label: 'Île du lac', icon: '🏝️', data: { secret: 'island' } });
+      out.push({ id: 'hl_windmill', kind: 'secret', x: 64.5, z: 67.8, radius: 1.6, label: 'Vieux moulin', icon: '🌾', data: { secret: 'windmill' } });
+    }
     if (this.region === 'ember') out.push({ id: 'spring', kind: 'secret', x: 37, z: 33, radius: 1.8, label: 'Source chaude', icon: '♨️', data: { secret: 'spring' } });
     if (this.region === 'mountains') out.push({ id: 'summit', kind: 'secret', x: 41.5, z: 12, radius: 1.5, label: 'Derrière la cascade', icon: '💧', data: { secret: 'waterfall' } });
     if (this.region === 'village' && st.village.fountain?.restored) {
@@ -653,13 +756,17 @@ export class World {
       this.nodeBatch.setMatrix(nv.handle, trs(nv.node.x, this.heightAt(nv.node.x, nv.node.z), nv.node.z, nv.rot, s * (1 + Math.abs(amp) * 0.3), s * (1 - Math.abs(amp) * 0.2), s * (1 + Math.abs(amp) * 0.3), amp * 0.4, amp * 0.3));
     }
     for (const w of this.waterfalls) (w.material as THREE.ShaderMaterial).uniforms.uTime.value = time;
+    for (const s of this.structures) if (s.spinner) s.spinner.rotation.z = -time * 0.6;
     this.farm?.update(dt, time, night);
+    this.hamlet?.update(dt, night);
+    this.house?.update(time);
     // chimney smoke & campfires
     this.smokeTimer -= dt;
     if (this.smokeTimer <= 0) {
       this.smokeTimer = 0.35;
       for (const p of this.smokePoints) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
       for (const p of this.farm?.smokePoints ?? []) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
+      for (const p of this.hamlet?.smokePoints ?? []) if (p.distanceToSquared(focus) < 900) this.particles.smoke(p.x, p.y, p.z);
       for (const p of this.firePoints) {
         this.particles.emit({ x: p.x + (Math.random() - 0.5) * 0.3, y: p.y, z: p.z + (Math.random() - 0.5) * 0.3, vy: 1.2, life: 0.8, size: 0.3, size1: 0.05, color: 0xffa03a, frame: 0, additive: true });
         this.particles.smoke(p.x, p.y + 0.6, p.z, true);
@@ -683,7 +790,7 @@ export class World {
       this.pointLights.push(l);
       this.root.add(l);
     }
-    const pts = [...this.lightPoints, ...(this.farm?.lightPoints ?? []), ...(this.house?.lightPoints ?? [])];
+    const pts = [...this.lightPoints, ...(this.farm?.lightPoints ?? []), ...(this.house?.lightPoints ?? []), ...(this.hamlet?.lightPoints ?? [])];
     pts.sort((a, b) => a.distanceToSquared(focus) - b.distanceToSquared(focus));
     for (let i = 0; i < this.pointLights.length; i++) {
       const l = this.pointLights[i];

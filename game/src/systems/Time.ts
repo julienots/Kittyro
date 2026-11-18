@@ -60,6 +60,7 @@ export class TimeSystem {
     this.ctx.farming.newDay(this.ctx.weather.isRaining());
     this.ctx.animals.newDay();
     this.dailyFarm();
+    this.ctx.hamlet.newDay();
     this.ctx.quests.refresh();
     this.ctx.festivals.newDay();
     const season = seasonOfDay(st.time.day);

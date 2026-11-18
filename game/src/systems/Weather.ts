@@ -4,9 +4,9 @@ import { seasonOfDay, dayOfSeason } from '../data/constants';
 import { FESTIVALS } from '../data/festivals';
 
 const TABLE: Record<Season, [WeatherType, number][]> = {
-  spring: [['sun', 45], ['cloudy', 20], ['rain', 28], ['storm', 4], ['fog', 3]],
+  spring: [['sun', 42], ['cloudy', 20], ['rain', 26], ['storm', 9], ['fog', 3]],
   summer: [['sun', 62], ['cloudy', 12], ['rain', 12], ['storm', 12], ['fog', 2]],
-  autumn: [['sun', 35], ['cloudy', 25], ['rain', 22], ['fog', 15], ['storm', 3]],
+  autumn: [['sun', 33], ['cloudy', 24], ['rain', 22], ['fog', 13], ['storm', 8]],
   winter: [['snow', 45], ['cloudy', 25], ['sun', 20], ['fog', 10]],
 };
 
@@ -37,7 +37,7 @@ export class WeatherSystem {
     w.tomorrow = this.roll(this.ctx.state.time.day + 1);
     w.current = w.today;
     // rainy days may clear up in the afternoon -> chance of rainbow
-    w.clearAt = (w.today === 'rain' || w.today === 'storm') && this.ctx.rng.chance(0.45) ? this.ctx.rng.int(12 * 60, 16 * 60) : 0;
+    w.clearAt = (w.today === 'rain' || w.today === 'storm') && this.ctx.rng.chance(0.7) ? this.ctx.rng.int(12 * 60, 16 * 60) : 0;
     this.ctx.bus.emit('weather:changed', { current: w.current });
   }
 
@@ -53,7 +53,7 @@ export class WeatherSystem {
       this.ctx.bus.emit('weather:changed', { current: w.current, rainbow: true });
       this.ctx.bus.emit('rainbow');
     }
-    if (w.current === 'storm' && this.ctx.rng.chance(0.06)) {
+    if (w.current === 'storm' && this.ctx.rng.chance(0.08)) {
       w.lightning = st.absMinute;
       this.ctx.bus.emit('lightning');
     }

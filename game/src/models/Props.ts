@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { overrideGeo } from './External';
 import { mb, ModelBuilder } from './Builder';
 import type { DecorDef } from '../data/decor';
 import { treeGeo } from './Nature';
@@ -25,6 +26,8 @@ function flowerHead(b: ModelBuilder, x: number, y: number, z: number, c: number,
 }
 
 export function propModel(def: DecorDef, season: Season = 'summer'): PropModel {
+  const ov = overrideGeo(def.id);
+  if (ov) return { geo: ov, glow: null };
   const b = mb();
   const g = mb();
   const { c1, c2 } = def;

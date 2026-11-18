@@ -1,4 +1,5 @@
 import type { Ctx } from './Context';
+import { STORY_TALK } from '../data/quests';
 import { NPC_BY_ID, FRIEND_REWARDS } from '../data/npcs';
 import { FRIEND_MAX, FRIEND_POINTS_PER_LEVEL, isNight, seasonOfDay } from '../data/constants';
 import { item } from '../data/items';
@@ -42,6 +43,9 @@ export class NpcSystem {
       this.addFriendship(id, 10);
       this.ctx.progress('talk', id);
     }
+    const story = st.quests.active.find((q) => q.kind === 'story' && !q.claimed);
+    const sl = story ? STORY_TALK[story.id]?.[id] : undefined;
+    if (sl) return sl;
     if (first) return def.lines[0][0];
     const tier = Math.min(3, Math.floor(this.level(id) / 3));
     const r = this.ctx.rng;

@@ -21,7 +21,6 @@ export function titleScreen(ui: UI, hasSave: boolean, onContinue: () => void, on
 /** Character creator for a new game. */
 export function creatorScreen(ui: UI, onDone: (name: string, farm: string, look: Appearance) => void): void {
   const look: Appearance = JSON.parse(JSON.stringify(DEFAULT_LOOK));
-  ui.g.previewLook(look);
   const name = h('input.text', { value: 'Sacha', maxLength: 16, placeholder: 'Votre prénom' }) as HTMLInputElement;
   const farm = h('input.text', { value: 'Ferme Moussue', maxLength: 22, placeholder: 'Nom de la ferme' }) as HTMLInputElement;
   let done = false;
@@ -30,12 +29,12 @@ export function creatorScreen(ui: UI, onDone: (name: string, farm: string, look:
     done = true;
     onDone(name.value.trim() || 'Sacha', farm.value.trim() || 'Ferme Moussue', look);
   };
+  const ed = lookEditor(ui, look, () => {}, false, { creator: true, header: h('div.row.creator-names', null, h('div.grow', null, h('div.muted', null, 'Prénom'), name), h('div.grow', null, h('div.muted', null, 'Nom de votre ferme'), farm)) });
   ui.showPanel('creator', '🧸 Votre personnage', [
-    h('div.row', null, h('div.grow', null, h('div.muted', null, 'Prénom'), name), h('div.grow', null, h('div.muted', null, 'Ferme'), farm)),
-    h('p.muted', null, 'Personnalisez votre style. Vous pourrez le changer à tout moment dans la garde-robe.'),
-    lookEditor(ui, look, (l) => ui.g.previewLook(l), false),
-    h('div.center', { style: { marginTop: '14px' } }, h('button.btn', { style: { fontSize: '20px' }, onclick: () => {
+    ed,
+    h('p.muted.center', { style: { fontSize: '12.5px', margin: '6px 0 0' } }, 'Vous pourrez tout changer plus tard dans ⚙️ Menu → 👗 Garde-robe.'),
+    h('div.center', { style: { marginTop: '8px' } }, h('button.btn', { style: { fontSize: '20px' }, onclick: () => {
       ui.closePanel();
     } }, '🌿 Commencer l\'aventure')),
-  ], { size: 'wide', onClose: finish });
+  ], { size: 'wide', onClose: () => { (ed as any).__dispose?.(); finish(); } });
 }

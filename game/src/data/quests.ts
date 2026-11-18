@@ -14,7 +14,8 @@ export interface QuestTemplate {
 
 /** The main story: "Le renouveau de la vallée". Linear but never time-limited. */
 export const STORY: QuestTemplate[] = [
-  { id: 's0', kind: 'story', giver: 'moss', title: 'Bienvenue à Green Valley', desc: 'Parlez à Moss, le vieux jardinier, près de la ferme.', objectives: [{ type: 'talk', target: 'moss', count: 1 }], rewards: { coins: 100, items: [{ id: 'seed_lettuce', qty: 6 }, { id: 'seed_carrot', qty: 4 }] } },
+  { id: 's0', kind: 'story', giver: 'moss', title: 'Bienvenue à Green Valley', desc: 'Parlez à Moss, le vieux jardinier, qui vous attend près de la maison.', objectives: [{ type: 'talk', target: 'moss', count: 1 }], rewards: { coins: 100, items: [{ id: 'seed_lettuce', qty: 6 }, { id: 'seed_carrot', qty: 4 }] } },
+  { id: 'sh', kind: 'story', giver: 'moss', title: 'Un toit sur la tête', desc: 'La maison de grand-mère Rose tombe en ruine. Rassemblez 20 bois et 10 pierres, puis réparez-la devant la porte.', objectives: [{ type: 'repair', target: 'house', count: 1 }], rewards: { coins: 150, xp: 40, items: [{ id: 'bread', qty: 2 }] } },
   { id: 's1', kind: 'story', giver: 'moss', title: 'Premiers sillons', desc: 'Préparez la terre avec la houe, plantez des graines et arrosez-les.', objectives: [{ type: 'till', count: 6 }, { type: 'plant', count: 6 }, { type: 'water', count: 6 }], rewards: { coins: 150, xp: 40 } },
   { id: 's2', kind: 'story', giver: 'moss', title: 'La première récolte', desc: 'Récoltez 5 légumes. (Astuce : la salade pousse vite !)', objectives: [{ type: 'harvest', target: '*', count: 5 }], rewards: { coins: 200, xp: 50, items: [{ id: 'seed_wheat', qty: 10 }] } },
   { id: 's3', kind: 'story', giver: 'moss', title: 'Le chemin du village', desc: 'Suivez le chemin à l\'est pour découvrir Willowbrook et rencontrer Mallow.', objectives: [{ type: 'visit', target: 'village', count: 1 }, { type: 'talk', target: 'mallow', count: 1 }], rewards: { coins: 200, xp: 40 } },
@@ -35,6 +36,18 @@ export const STORY: QuestTemplate[] = [
   { id: 's18', kind: 'story', giver: 'mallow', title: 'Le cœur du village', desc: 'Restaurez le marché et la fontaine de la place.', objectives: [{ type: 'restore', target: 'market', count: 1 }, { type: 'restore', target: 'fountain', count: 1 }], rewards: { coins: 3000, gems: 30, xp: 400 } },
   { id: 's19', kind: 'story', giver: 'moss', title: 'Le renouveau', desc: 'Restaurez les maisons et le parc. Willowbrook revivra pour de bon !', objectives: [{ type: 'restore', target: 'houses', count: 1 }, { type: 'restore', target: 'park', count: 1 }], rewards: { coins: 5000, gems: 100, xp: 800 }, effect: 'finale' },
 ];
+
+/** What NPCs say while a given story quest is active (questId -> npc -> line). */
+export const STORY_TALK: Record<string, Record<string, string>> = {
+  s0: { moss: 'Te voilà enfin ! Ta grand-mère Rose m\'avait dit que tu viendrais un jour. Regarde-moi cette pauvre maison… le toit fuit de partout. Commençons par la retaper : il te faut 20 bois et 10 pierres. Les arbres et les cailloux autour de la ferme feront l\'affaire !' },
+  sh: { moss: 'Coupe du bois 🪓 et casse quelques pierres ⛏️ : approche-toi et touche le gros bouton, l\'outil se choisit tout seul. Ensuite, répare la maison devant la porte. Je t\'attends ici !' },
+  s1: { moss: 'Quelle belle maison ! Rose serait fière. Maintenant, la terre : laboure avec la houe, plante tes graines et arrose-les. Le champ près de la maison est parfait.' },
+  s2: { moss: 'Les plantes poussent pendant la nuit, si elles ont été arrosées. Arrose, va dormir, et demain… surprise !' },
+  s3: { moss: 'Le village de Willowbrook est à l\'est, au bout du chemin. Il s\'est endormi lui aussi… Va voir Mallow, il saura par où commencer.', mallow: 'Un visiteur ! Bienvenue à Willowbrook… enfin, ce qu\'il en reste. Tout le monde est parti quand la vallée a perdu ses couleurs. Avec ton aide, on pourrait tout reconstruire !' },
+  s4: { mallow: 'Pour reconstruire, il faut des sous ! Vends tes récoltes : la caisse d\'expédition de ta ferme paie chaque matin.' },
+  s5: { moss: 'Pour restaurer le village, il faudra beaucoup de bois et de pierre. Les arbres repoussent, ne t\'inquiète pas !', mallow: 'Rapporte du bois et de la pierre, on va en avoir besoin !' },
+  s6: { mallow: 'Ma boutique est juste là, toute de travers. Apporte les matériaux et touche 🔨 devant la porte : on la remet sur pied ensemble !' },
+};
 
 /** Templates for procedurally generated daily / weekly / board quests. */
 export interface QuestGen {

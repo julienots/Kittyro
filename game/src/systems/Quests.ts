@@ -24,6 +24,7 @@ export function objectiveText(o: { type: string; target?: string; count: number 
     case 'build': return `Construire : ${t}`;
     case 'adopt': return `Adopter : ${t}`;
     case 'upgrade': return `Améliorer l'outil : ${t}`;
+    case 'repair': return 'Réparer la maison (20 bois, 10 pierres)';
     case 'break_boulder': return 'Briser le rocher du col';
     case 'mine_depth': return `Atteindre le niveau ${o.count} de la mine`;
     case 'discover': return `Découvrir ${o.count} nouvelles créatures`;
@@ -69,6 +70,7 @@ export class QuestSystem {
     const st = this.ctx.state;
     for (const o of q.objectives) {
       if (o.type === 'mine_depth') o.progress = Math.min(o.count, st.mine.deepest);
+      if (o.type === 'repair' && o.target === 'house' && !st.flags.houseRuined) o.progress = o.count;
       if (o.type === 'restore' && o.target && st.village[o.target]?.restored) o.progress = o.count;
       if (o.type === 'visit' && o.target && st.regions[o.target as keyof typeof st.regions]?.visited && o.target !== 'farm') o.progress = o.count;
       if (o.type === 'build' && o.target && st.farm.placed.some((p) => p.kind === o.target)) o.progress = o.count;

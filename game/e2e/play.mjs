@@ -10,7 +10,6 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));
 const shot = (n) => page.screenshot({ path: `${out}/${n}.png` });
 const wait = (ms) => page.waitForTimeout(ms);
 const frames = async (n) => { const f = await page.evaluate(() => window.__frames ?? 0); await page.waitForFunction((t) => (window.__frames ?? 0) >= t, f + n, { timeout: 60000 }); };
-if (process.env.Q) await page.addInitScript((q) => localStorage.setItem('mm_settings', JSON.stringify({ quality: q })), process.env.Q);
 await page.goto(url);
 await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
 await frames(5);

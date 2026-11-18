@@ -5,6 +5,7 @@ import { VILLAGE_BUILDINGS } from '../data/village';
 import { HOUSE_W, HOUSE_D } from './houseLayout';
 import type { MineFloor } from '../systems/Mining';
 import { MINE_SIZE } from '../systems/Mining';
+import { HAMLET_AREA } from '../data/hamlet';
 
 /**
  * Hand-designed region layouts with procedural detail. Deterministic for a given
@@ -119,7 +120,137 @@ export function buildFarm(seed: number, st: GameState): RegionLayout {
   b.scatter('weeds', 8, 32, 6, 44, 10);
   sprinkle(b, 'rocks_small', 10, 2, 2, 50, 44);
   sprinkle(b, 'log_small', 4, 2, 8, 8, 44);
+  // south trail to the hamlet — added last so the rest of the farm stays identical for existing saves
+  b.line([[23.5, 37.5], [23.5, 47]], 1.6, T.PATH, 0.1);
+  b.L.props = b.L.props.filter((p) => !(p.x >= 20.5 && p.x < 26.5 && p.z >= 38));
+  b.L.nodes = b.L.nodes.filter((n) => !(n.z >= 37 && b.get(Math.floor(n.x), Math.floor(n.z)) === T.PATH) && !(n.x >= 20.5 && n.x < 26.5 && n.z >= 42));
+  b.portal({ x0: 21, z0: 45, x1: 26, z1: 46, to: 'hamlet', anchor: 'farm_entry', label: 'Clairefontaine' });
+  b.anchor('hamlet_entry', 23.5, 42.5);
+  b.L.structures.push({ kind: 'signpost', x: 25, z: 40, w: 1, d: 1, params: { label: 'Hameau' } });
+  // v1.6: west trail to the Highlands (appended so the rest of the farm stays put)
+  b.line([[-1, 28.5], [4, 28.2], [8.5, 27.5]], 1.7, T.PATH, 0.1);
+  const inTrail = (x: number, z: number) => x < 9 && z > 25.8 && z < 31.2;
+  b.L.props = b.L.props.filter((p) => !inTrail(p.x, p.z));
+  b.L.nodes = b.L.nodes.filter((n) => !inTrail(n.x, n.z));
+  b.portal({ x0: 0, z0: 26, x1: 1, z1: 31, to: 'highlands', anchor: 'farm_entry', label: 'Les Hautes Terres' });
+  b.anchor('highlands_entry', 3.2, 28.5);
+  b.L.structures.push({ kind: 'signpost', x: 4, z: 26, w: 1, d: 1, params: { label: 'Hautes Terres' } });
   return b.done({ hills: 0.22 });
+}
+
+/**
+ * Les Hautes Terres — a vast open region west of the farm (more than four farms wide):
+ * rolling hills, a great lake with a swimmable island, a river from a mountain waterfall,
+ * ancient ruins, a windmill on a hill, a lookout tower and wild meadows to roam.
+ */
+export function buildHighlands(seed: number): RegionLayout {
+  const W = 120, D = 108;
+  const b = new LayoutBuilder('highlands', W, D, seed);
+  b.L.grass = 0.62;
+  b.L.flowers = [0xffffff, 0xffd03a, 0xff8ab8, 0xb08ae8, 0x8ad8ff, 0xff9a4a];
+  b.L.skirt = [0x8fcf5f, 0x9a6a42, 0x7a5232, 0x5a4a48];
+  // northern mountain wall with forest dips
+  for (let x = 0; x < W; x++) {
+    const depth = 6 + Math.round(Math.sin(x * 0.11) * 2 + b.noise.get(x * 0.15, 4) * 4);
+    for (let z = 0; z < depth; z++) b.set(x, z, T.ROCK);
+  }
+  // rocky outcrops scattered on the hills
+  for (let x = 4; x < W - 4; x++) for (let z = 10; z < D - 4; z++) {
+    if (b.noise.fbm(x * 0.07 + 30, z * 0.07, 3) > 0.735) b.set(x, z, T.ROCK);
+  }
+  // forest belts in the west and south-east
+  for (let x = 2; x < W - 2; x++) for (let z = 8; z < D - 2; z++) {
+    const f = b.noise.fbm(x * 0.05 + 70, z * 0.05 + 11, 3);
+    if (b.get(x, z) === T.GRASS && f > 0.6) b.set(x, z, T.FOREST);
+  }
+  // the great lake, deep in the middle, with a little island
+  b.circle(34, 84, 12, T.WATER, 0.2);
+  b.circle(34, 84, 6.5, T.DEEP, 0.15);
+  b.circle(36.5, 86, 2.6, T.GRASS, 0.1);
+  b.circle(36.5, 86, 1.2, T.SAND, 0);
+  for (let x = 18; x < 52; x++) for (let z = 68; z < 100; z++) {
+    if (b.get(x, z) === T.GRASS || b.get(x, z) === T.FOREST) {
+      const near = [b.get(x + 1, z), b.get(x - 1, z), b.get(x, z + 1), b.get(x, z - 1)].some((t) => t === T.WATER);
+      if (near) b.set(x, z, T.SAND);
+    }
+  }
+  // river: waterfall in the north, crosses the road under a bridge, feeds the lake
+  b.line([[88, 7], [86, 16], [92, 28], [93, 40], [94, 48], [94, 60], [90, 70], [84, 79], [70, 88], [54, 89], [45, 86]], 3, T.WATER, 0.12);
+  // a smaller pond on the east meadow
+  b.circle(102, 84, 4, T.WATER, 0.2);
+  // roads
+  b.line([[121, 54], [100, 54], [88, 54], [78, 56], [64, 48], [52, 50], [40, 60], [28, 62], [16, 56], [8, 46]], 1.9, T.PATH, 0.12);
+  b.line([[64, 48], [62, 34], [56, 22], [50, 16]], 1.5, T.PATH, 0.18);
+  b.line([[78, 56], [76, 70], [64, 78], [50, 79]], 1.5, T.PATH, 0.18);
+  b.line([[100, 54], [104, 40], [106, 26]], 1.4, T.PATH, 0.18);
+  b.line([[28, 62], [24, 40], [20, 26]], 1.4, T.PATH, 0.18);
+  b.circle(20, 24, 4.5, T.GRASS, 0.1);
+  b.circle(50, 16, 4.2, T.GRASS, 0.1);
+  b.circle(106, 24, 3.4, T.GRASS, 0.1);
+  b.circle(64, 66, 3.2, T.GRASS, 0.05);
+  // the bridge over the river on the main road
+  b.rect(91, 52, 98, 56, T.BRIDGE);
+  b.structure({ kind: 'bridge', x: 91, z: 52, w: 7, d: 4, blocks: false, params: { span: 'x', stone: true } });
+  // a wooden pier into the lake
+  b.rect(45, 79, 48, 81, T.BRIDGE);
+  b.structure({ kind: 'pier', id: 'lake_pier', x: 45, z: 79, w: 3, d: 2, blocks: false });
+  // landmarks
+  b.structure({ kind: 'stone_circle', id: 'stone_circle', x: 47, z: 13, w: 6, d: 6, blocks: false });
+  b.structure({ kind: 'ruin_tower', id: 'ruin_tower', x: 18, z: 21, w: 3, d: 3 });
+  b.structure({ kind: 'lookout', id: 'lookout', x: 105, z: 23, w: 2, d: 2 });
+  b.structure({ kind: 'windmill', id: 'windmill', x: 63, z: 64, w: 3, d: 3 });
+  b.structure({ kind: 'campfire', x: 66, z: 50, w: 1, d: 1, blocks: true });
+  b.structure({ kind: 'tent', id: 'hl_tent', x: 68, z: 47, w: 2, d: 2 });
+  b.structure({ kind: 'signpost', x: 114, z: 51, w: 1, d: 1, params: { label: 'Green Valley' } });
+  b.structure({ kind: 'signpost', x: 66, z: 44, w: 1, d: 1, params: { label: 'Ruines' } });
+  b.structure({ kind: 'signpost', x: 80, z: 59, w: 1, d: 1, params: { label: 'Grand lac' } });
+  b.structure({ kind: 'boat', x: 49, z: 82, w: 1, d: 2, blocks: true });
+  // ruined walls around the tower and along the old road
+  for (const [x, z, r] of [[14, 19, 0.3], [24, 22, 1.6], [16, 27, 2.6], [23, 27, 0.9], [40, 58, 0.4], [30, 58, 2.2]] as [number, number, number][]) b.prop('ruin_wall', x + 0.5, z + 0.5, { rot: r, blocks: true });
+  for (const [x, z] of [[58, 20], [44, 22], [55, 9], [92, 66], [74, 30]]) b.prop('standing_stone', x + 0.5, z + 0.5, { blocks: true, scale: b.r.range(0.9, 1.3) });
+  for (const [x, z] of [[60, 70], [68, 70], [58, 62]]) b.prop('hay_bale', x + 0.5, z + 0.5, { blocks: true });
+  b.L.props.push({ model: 'waterfall', x: 88.5, z: 7.4, rot: 0 });
+  // anchors & portal
+  b.anchor('farm_entry', 116.5, 54);
+  b.anchor('spawn', 116.5, 54);
+  b.anchor('lake', 46.5, 80);
+  b.anchor('island', 36.5, 86);
+  b.anchor('ruins', 20, 26);
+  b.anchor('stones', 50, 16);
+  b.anchor('lookout', 106, 26.5);
+  b.anchor('windmill', 64.5, 68.5);
+  b.anchor('camp', 67, 50.5);
+  b.reserve(110, 50, 120, 58);
+  b.reserve(44, 10, 56, 22);
+  b.reserve(15, 18, 25, 28);
+  b.reserve(102, 20, 109, 28);
+  b.reserve(60, 61, 68, 69);
+  treeEdge(b, ['oak', 'pine', 'birch', 'oak'], [[118, 51, 120, 57]]);
+  b.portal({ x0: 119, z0: 51, x1: 120, z1: 57, to: 'farm', anchor: 'highlands_entry', label: 'Green Valley' });
+  // nature: woods, groves, rocks, ores and lots to forage
+  b.scatter(['tree_oak', 'tree_pine', 'tree_pine', 'tree_birch'], 150, 3, 8, W - 3, D - 3, [T.FOREST], 1);
+  b.scatter(['tree_oak', 'tree_birch', 'tree_oak'], 60, 3, 8, W - 3, D - 3, [T.GRASS], 2);
+  b.scatter(['rock', 'rock', 'rock_big', 'ore_copper', 'ore_iron', 'ore_coal'], 40, 3, 8, W - 3, D - 3, [T.GRASS, T.FOREST], 1);
+  b.scatter('ore_crystal', 4, 40, 8, 70, 30, [T.GRASS], 1);
+  b.scatter('geode_node', 3, 3, 8, W - 3, D - 3, [T.GRASS], 1);
+  b.scatter('bush_berry', 26, 3, 8, W - 3, D - 3);
+  b.scatter('forage', 60, 3, 8, W - 3, D - 3, [T.GRASS, T.FOREST, T.SAND]);
+  b.scatter('stump', 8, 3, 8, W - 3, D - 3);
+  b.scatter('clay_spot', 5, 20, 66, 52, 100, [T.SAND, T.GRASS]);
+  b.scatter('driftwood', 5, 20, 66, 52, 100, [T.SAND]);
+  b.node('chest', 36.5, 86.2, { once: true }); // on the island: swim or jump to reach it!
+  b.node('chest', 106, 25.5, { once: true });
+  b.node('chest', 20, 25.2, { once: true });
+  b.node('chest', 8, 46, { once: true });
+  b.node('tree_giant', 30, 40);
+  sprinkle(b, 'wildflowers', 120, 3, 8, W - 3, D - 3, [T.GRASS]);
+  sprinkle(b, 'tall_grass', 90, 3, 8, W - 3, D - 3, [T.GRASS]);
+  sprinkle(b, 'rocks_small', 40, 3, 8, W - 3, D - 3);
+  sprinkle(b, 'fern', 60, 3, 8, W - 3, D - 3, [T.FOREST]);
+  sprinkle(b, 'mushrooms', 30, 3, 8, W - 3, D - 3, [T.FOREST]);
+  sprinkle(b, 'log_small', 10, 3, 8, W - 3, D - 3);
+  cliffRocks(b, 0.35);
+  return b.done({ hills: 0.85, rockHeight: 3.4 });
 }
 
 export function buildVillage(seed: number, st: GameState): RegionLayout {
@@ -425,6 +556,61 @@ export function buildHouse(seed: number): RegionLayout {
   return b.done({ hills: 0 });
 }
 
+export function buildHamlet(seed: number, st: GameState): RegionLayout {
+  const b = new LayoutBuilder('hamlet', 54, 48, seed);
+  const A = HAMLET_AREA;
+  b.L.grass = 0.7;
+  b.L.flowers = [0xffffff, 0xffd03a, 0xb08ae8, 0xff8ab8, 0x8ad8ff];
+  // stream along the east edge and a pond in the south-west woods
+  b.line([[49, -1], [48, 12], [50, 26], [48.5, 38], [49.5, 49]], 2.6, T.WATER, 0.25);
+  b.circle(9, 43.5, 2.8, T.WATER);
+  // trail from the farm down to the founding stone
+  b.line([[27, -1], [27, 8], [26, 15]], 1.6, T.PATH, 0.15);
+  b.circle(26, 19, 2.6, T.PLAZA, 0.08);
+  b.rect(46, 20, 52, 23, T.BRIDGE);
+  b.structure({ kind: 'bridge', x: 46, z: 20, w: 6, d: 3, blocks: false, params: { span: 'x' } });
+  b.structure({ kind: 'hamlet_board', id: 'register', x: 25, z: 17, w: 1, d: 1 });
+  b.structure({ kind: 'campfire', x: 27, z: 20, w: 1, d: 1, blocks: true });
+  b.structure({ kind: 'tent', id: 'traveller_tent', x: 22, z: 19, w: 2, d: 2 });
+  b.structure({ kind: 'signpost', x: 29, z: 5, w: 1, d: 1, params: { label: 'Clairefontaine' } });
+  b.anchor('farm_entry', 27, 3.5);
+  b.anchor('spawn', 27, 3.5);
+  b.anchor('plaza', 26, 22.5);
+  b.anchor('register', 25.5, 18.6);
+  b.reserve(21, 15, 31, 25);
+  treeEdge(b, ['oak', 'birch', 'pine', 'oak'], [[24, 0, 30, 3]]);
+  b.portal({ x0: 24, z0: 0, x1: 30, z1: 1, to: 'farm', anchor: 'hamlet_entry', label: 'Green Valley' });
+  // the clearing is overgrown: trees, rocks and weeds to clear (they don't come back)
+  const clutter = (kind: string, n: number) => {
+    let placed = 0, tries = 0;
+    while (placed < n && tries < n * 40) {
+      tries++;
+      const x = b.r.int(A.minX, A.maxX - 1), z = b.r.int(A.minZ, A.maxZ - 1);
+      if (!b.free(x, z, [T.GRASS])) continue;
+      if (st.hamlet.placed.some((p) => x >= p.x - 1 && z >= p.z - 1 && x < p.x + 5 && z < p.z + 5)) continue;
+      b.node(kind, x + 0.5, z + 0.5, { once: true });
+      placed++;
+    }
+  };
+  clutter('weeds', 26);
+  clutter('rock', 12);
+  clutter('tree_oak', 8);
+  clutter('tree_birch', 5);
+  clutter('stump', 4);
+  // wild woods around the clearing
+  b.scatter(['tree_oak', 'tree_pine', 'tree_birch'], 14, 2, A.maxZ, 46, 46, [T.GRASS], 1);
+  b.scatter(['tree_oak', 'tree_pine'], 8, 2, 2, A.minX, 40, [T.GRASS], 1);
+  b.scatter('bush_berry', 5, 2, 2, 52, 46);
+  b.scatter('forage', 10, 2, 2, 52, 46);
+  b.scatter(['rock', 'ore_copper'], 4, 2, A.maxZ, 46, 46, [T.GRASS], 1);
+  b.scatter('clay_spot', 2, 2, 40, 20, 46);
+  sprinkle(b, 'rocks_small', 10, 2, 2, 52, 46);
+  sprinkle(b, 'log_small', 4, 2, 40, 50, 46);
+  b.L.props.push({ model: 'lantern_pole', x: 28.5, z: 16.5, rot: 0, blocks: true });
+  b.L.props.push({ model: 'log_pile', x: 23.5, z: 22.5, rot: 0.3 });
+  return b.done({ hills: 0.18 });
+}
+
 export function buildRegion(id: RegionId, st: GameState, mineFloor?: MineFloor): RegionLayout {
   const seed = st.seed;
   switch (id) {
@@ -437,5 +623,7 @@ export function buildRegion(id: RegionId, st: GameState, mineFloor?: MineFloor):
     case 'ember': return buildEmber(seed);
     case 'mine': return buildMine(seed, mineFloor!);
     case 'house': return buildHouse(seed);
+    case 'hamlet': return buildHamlet(seed, st);
+    case 'highlands': return buildHighlands(seed);
   }
 }

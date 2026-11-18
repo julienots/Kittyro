@@ -44,6 +44,10 @@ export const DISHES: DishDef[] = [
   { id: 'sushi', name: 'Maki de la côte', icon: '🍣', sell: 260, buff: { id: 'fishing', minutes: 360 }, desc: 'Algue, riz et poisson frais.' },
   { id: 'garlic_bread', name: 'Pain à l\'ail', icon: '🥖', sell: 150, buff: { id: 'gather', minutes: 150 }, desc: 'Parfumé.' },
   { id: 'ember_curry', name: 'Curry de braise', icon: '🍛', sell: 480, buff: { id: 'luck', minutes: 480 }, desc: 'Ça pique (gentiment).' },
+  { id: 'cider', name: 'Cidre de pomme', icon: '🧃', sell: 120, buff: { id: 'speed', minutes: 150 }, desc: 'Pétillant, servi à la taverne du hameau.' },
+  { id: 'veggie_pie', name: 'Tourte du hameau', icon: '🥧', sell: 230, buff: { id: 'gather', minutes: 200 }, desc: 'Carottes, pommes de terre et beurre doré.' },
+  { id: 'roasted_corn', name: 'Maïs grillé', icon: '🌽', sell: 90, buff: { id: 'growth', minutes: 120 }, desc: 'Au feu de camp, avec un peu de beurre.' },
+  { id: 'hamlet_stew', name: 'Ragoût de Clairefontaine', icon: '🥘', sell: 260, buff: { id: 'luck', minutes: 240 }, desc: 'La recette secrète des villageois.' },
   { id: 'moon_cake', name: 'Gâteau de lune', icon: '🥮', sell: 900, buff: { id: 'luck', minutes: 720 }, desc: 'Une légende du village.' },
 ];
 export const DISH_BY_ID: Record<string, DishDef> = Object.fromEntries(DISHES.map((d) => [d.id, d]));
@@ -114,6 +118,21 @@ export const RECIPES: RecipeDef[] = [
   R('garlic_bread', 'garlic_bread', 2, 'kitchen', 'cooking', [['flour', 1], ['garlic', 2], ['butter', 1]]),
   R('ember_curry', 'ember_curry', 1, 'kitchen', 'cooking', [['fire_pepper', 2], ['potato', 1], ['carrot', 1]], { level: 7 }),
   R('moon_cake', 'moon_cake', 1, 'kitchen', 'cooking', [['moonbloom', 1], ['flour', 2], ['honey', 1], ['egg', 1]], { level: 8 }),
+  // hamlet
+  R('timber', 'timber', 1, 'workbench', 'material', [['wood', 4]]),
+  R('cut_stone', 'cut_stone', 1, 'workbench', 'material', [['stone', 5]]),
+  R('thatch', 'thatch', 1, 'hand', 'material', [['fiber', 4], ['hay', 2]]),
+  R('wicker_basket', 'wicker_basket', 1, 'hand', 'material', [['fiber', 8]]),
+  R('cider', 'cider', 1, 'kitchen', 'cooking', [['apple', 2], ['sugar', 1]]),
+  R('veggie_pie', 'veggie_pie', 1, 'kitchen', 'cooking', [['flour', 1], ['carrot', 1], ['potato', 1], ['butter', 1]]),
+  R('roasted_corn', 'roasted_corn', 1, 'kitchen', 'cooking', [['corn', 2]]),
+  R('hamlet_stew', 'hamlet_stew', 1, 'kitchen', 'cooking', [['potato', 2], ['kale', 1], ['herb', 1]]),
+  R('c_path_cobble', 'path_cobble', 6, 'workbench', 'decor', [['cut_stone', 1]]),
+  R('c_lantern_blue', 'lantern_blue', 1, 'workbench', 'decor', [['timber', 1], ['glass', 1], ['copper_bar', 1]]),
+  R('c_banner', 'hamlet_banner', 1, 'workbench', 'decor', [['cloth', 1], ['timber', 1]]),
+  R('c_fox_statue', 'fox_statue', 1, 'workbench', 'decor', [['cut_stone', 6]], { level: 4 }),
+  R('c_candles', 'candles', 1, 'workbench', 'decor', [['beeswax', 2]]),
+  R('c_flowerbed_purple', 'flowerbed_purple', 2, 'workbench', 'decor', [['fiber', 2], ['tulip', 1]]),
   // furniture & decor crafted at the workbench
   R('c_fence_wood', 'fence_wood', 4, 'workbench', 'decor', [['wood', 4]]),
   R('c_fence_stone', 'fence_stone', 3, 'workbench', 'decor', [['stone', 6]]),

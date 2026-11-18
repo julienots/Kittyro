@@ -13,7 +13,7 @@ export const SEASON_NAMES: Record<Season, string> = {
   winter: 'Hiver',
 };
 export const SEASON_ICONS: Record<Season, string> = { spring: '🌸', summer: '☀️', autumn: '🍂', winter: '❄️' };
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const MAX_STACK = 999;
 export const INVENTORY_START = 24;
 export const INVENTORY_MAX = 48;

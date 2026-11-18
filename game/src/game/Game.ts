@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Ctx } from '../systems/Context';
 import type { GameState, RegionId, ToolId, Appearance } from '../state/types';
-import { createNewGame, FARM } from '../state/newGame';
+import { createNewGame, FARM, DEFAULT_LOOK } from '../state/newGame';
 import { SaveManager } from '../save/SaveManager';
 import { loadSettings, saveSettings, type Settings } from '../save/Settings';
 import { Renderer } from '../render/Renderer';
@@ -9,14 +9,20 @@ import { SkyRig } from '../render/Sky';
 import { CameraRig } from '../render/CameraRig';
 import { Particles, PF } from '../render/Particles';
 import { WeatherFX } from '../render/WeatherFX';
+import { AmbientLife } from '../render/AmbientLife';
+import { ads } from '../platform/Ads';
+import type { AdPlacement } from '../systems/AdRewards';
+import type { Offer } from '../systems/Shop';
 import { globalUniforms } from '../render/Materials';
 import { World, type Interactable } from '../world/World';
 import { T, WALKABLE } from '../world/Layout';
 import { updateGlow, updateWindows } from '../world/PropFactory';
 import { Player } from '../entities/Player';
-import { EntityManager, type WildAgent } from '../entities/Agents';
+import { FPHands } from '../entities/FPHands';
+import { EntityManager, type WildAgent, type VillagerAgent } from '../entities/Agents';
 import { Input } from '../input/Input';
 import { audio } from '../audio/Audio';
+import { loadExternalModels } from '../models/External';
 import { UI } from '../ui/UI';
 import { h, fmt } from '../ui/dom';
 import { titleScreen, creatorScreen } from '../ui/screens';
@@ -24,6 +30,11 @@ import type { GameApi } from '../ui/types';
 import { FishingGame } from '../minigames/Fishing';
 import { runMinigame, type MiniId, MINI_INFO } from '../minigames/Festival';
 import { Placement } from './Placement';
+import { Guide, type GuideInfo } from './Guide';
+import { LocalNet, type Me } from '../net/LocalNet';
+import { RemotePlayers } from '../entities/RemotePlayers';
+import { Cutscene, type Shot } from './Cutscene';
+import { EMOTES, EMOTE_BY_ID } from '../entities/Emotes';
 import { NODE_KINDS } from '../data/nodes';
 import { item } from '../data/items';
 import { NPC_BY_ID } from '../data/npcs';
@@ -33,13 +44,14 @@ import { INSECT_BY_ID } from '../data/insects';
 import { ANIMAL_BY_ID } from '../data/animals';
 import { VILLAGE_BY_ID } from '../data/village';
 import { BUILDING_BY_ID } from '../data/buildings';
+import { HAMLET_BY_ID } from '../data/hamlet';
 import { DECOR_BY_ID } from '../data/decor';
 import { RARITY_COLOR, RARITY_NAME } from '../data/fish';
 import { TOOL_BY_ID, toolArea } from '../data/tools';
 import { BUFF_NAMES } from '../data/recipes';
 import { FESTIVAL_BY_ID } from '../data/festivals';
 import { FRUIT_TREES } from '../data/resources';
-import { seasonOfDay, isNight, SEASON_NAMES, SECONDS_PER_GAME_MINUTE } from '../data/constants';
+import { seasonOfDay, isNight, SEASON_NAMES, SECONDS_PER_GAME_MINUTE, TOOL_TIERS } from '../data/constants';
 import { WEATHER_NAMES, WEATHER_ICONS } from '../systems/Weather';
 import { footprintOf } from '../systems/Building';
 import { structureGeo } from '../models/Buildings';
@@ -56,7 +68,7 @@ interface ActionTarget {
   z?: number;
 }
 
-const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home' };
+const MUSIC_BY_REGION: Record<string, string> = { farm: 'farm', village: 'village', woods: 'forest', mountains: 'mountain', coast: 'beach', frosty: 'winter', ember: 'ember', mine: 'cave', house: 'home', hamlet: 'village', highlands: 'forest' };
 
 export class Game implements GameApi {
   settings: Settings;
@@ -66,12 +78,23 @@ export class Game implements GameApi {
   rig: CameraRig;
   particles: Particles;
   weatherFx: WeatherFX;
+  life = new AmbientLife();
+  fpHands = new FPHands();
+  private viewBeforePlacement: 'iso' | 'fp' | null = null;
   ctx!: Ctx;
   world!: World;
   player!: Player;
   entities!: EntityManager;
   fishing!: FishingGame;
   placement!: Placement;
+  guide!: Guide;
+  private emoteBubble: THREE.Sprite | null = null;
+  cutscene: Cutscene | null = null;
+  /** local multiplayer (same Wi-Fi, no server) */
+  readonly net = new LocalNet(() => this.netMe());
+  readonly remotes = new RemotePlayers(this.net, () => (this.title ? '' : this.world?.region ?? ''), (x, z) => this.world?.heightAt(x, z) ?? 0);
+  private moveSpeed = 0;
+  private emoteBubbleT = 0;
   input: Input;
   ui: UI;
   audio = audio;
@@ -99,6 +122,7 @@ export class Game implements GameApi {
   private festivalSprite: THREE.Sprite | null = null;
   private tapMarker: THREE.Mesh;
   private offs: (() => void)[] = [];
+  private lastHamletProduce: { items: Record<string, number>; coins: number } | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.settings = loadSettings();
@@ -110,15 +134,30 @@ export class Game implements GameApi {
     this.particles.budget = this.renderer.profile.particles;
     this.weatherFx = new WeatherFX(this.particles, this.settings.quality === 'low' ? 400 : 900);
     const scene = this.renderer.scene;
-    scene.add(this.sky.group, this.particles.group, this.weatherFx.group);
-    this.sky.setShadowSize(this.renderer.profile.shadow);
+    scene.add(this.sky.group, this.particles.group, this.weatherFx.group, this.life.group);
+    this.renderer.overlay = this.fpHands;
     this.renderer.skyDome = this.sky.dome;
+    this.sky.setShadowSize(this.renderer.profile.shadow);
     this.ui = new UI(this);
     this.input = new Input(canvas, this.ui.root);
     this.tapMarker = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.36, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
-    scene.add(this.tapMarker);
+    scene.add(this.tapMarker, this.remotes.group);
+    this.net.onToast = (t, i) => this.ui.toast(t, i);
+    this.net.onChange = () => this.ui.netChanged();
+    this.net.onEmote = (p, id) => this.remotes.emote(p.id, id);
+    this.net.onChat = (line) => {
+      if (!line.mine) {
+        this.remotes.say(line.from, line.text);
+        audio.play('pop');
+      } else this.showEmoteBubble('💬', 2);
+      this.ui.chatLine(line);
+    };
     this.applyInputSettings();
     window.addEventListener('resize', () => this.renderer.resize());
+    ads.onShow = (on) => {
+      this.setPaused(on);
+      audio.setMuted(on);
+    };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
     window.addEventListener('pagehide', () => this.save());
   }
@@ -131,7 +170,7 @@ export class Game implements GameApi {
     return this.world?.region ?? 'farm';
   }
   fps(): string {
-    return this.renderer.info();
+    return `${this.renderer.info()} · ${this.world.region} x${this.player.pos.x.toFixed(1)} z${this.player.pos.z.toFixed(1)}`;
   }
   setPaused(p: boolean): void {
     this.paused = Math.max(0, this.paused + (p ? 1 : -1));
@@ -155,6 +194,7 @@ export class Game implements GameApi {
     this.renderer.autoQuality = this.settings.autoQuality;
     this.applyInputSettings();
     this.ui.applyLayout();
+    if (this.fishing) this.fishing.easy = this.settings.easyFishing;
   }
   private applyInputSettings(): void {
     this.input.mode = this.settings.controls;
@@ -164,11 +204,12 @@ export class Game implements GameApi {
   // ------------------------------------------------------------ boot
   async boot(): Promise<void> {
     audio.volumes = { music: this.settings.music, sfx: this.settings.sfx, ambience: this.settings.ambience };
-    const existing = await this.saves.load();
+    const [existing] = await Promise.all([this.saves.load(), loadExternalModels()]);
     this.hasSave = !!existing;
     // a living demo farm behind the title screen
     const demo = createNewGame('', '', undefined, 777);
     demo.time.minute = 17 * 60;
+    demo.flags.houseRuined = false;
     this.setupState(demo);
     this.loadRegion('farm', 'spawn', true);
     this.title = true;
@@ -189,7 +230,7 @@ export class Game implements GameApi {
     this.world = new World(this.ctx, this.particles, () => this.renderer.profile.grass, () => this.renderer.profile.lights);
     this.ctx.terrain = {
       isTillable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT]),
-      isBuildable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH]),
+      isBuildable: (x, z) => (this.world.region === 'farm' || this.world.region === 'hamlet') && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH, T.FOREST], true),
     };
     this.player = new Player(this.ctx, this.world, this.particles);
     this.player.outline = this.renderer.profile.outlines;
@@ -199,9 +240,16 @@ export class Game implements GameApi {
     this.renderer.scene.add(this.world.root, this.entities.group, this.player.root);
     this.fishing?.end();
     this.fishing = new FishingGame(this.ctx, this.player, this.particles, this.ui, audio, this.renderer.scene);
+    this.fishing.tipFn = (out) => this.rig.view === 'fp' && this.fpHands.rodTip(this.renderer.camera, out);
+    this.fishing.easy = this.settings.easyFishing;
     this.placement = new Placement(this.ctx, this.world, this.ui, this.rig, this.renderer.scene);
+    if (this.guide) this.renderer.scene.remove(this.guide.group);
+    this.guide = new Guide(this.ctx, () => this.world, () => this.entities, () => this.player);
+    this.renderer.scene.add(this.guide.group);
+    this.entities.markerFor = (id) => this.npcMarker(id);
     this.placement.onDone = () => {
       this.input.dragMode = false;
+      if (this.viewBeforePlacement) { this.applyView(this.viewBeforePlacement); this.viewBeforePlacement = null; }
       this.refreshWorld(this.world.region === 'house' ? 'house' : 'placed');
     };
     this.ctx.tools.refill();
@@ -209,17 +257,27 @@ export class Game implements GameApi {
     this.input.onTap = (nx, ny) => this.onTap(nx, ny);
     this.input.onZoom = (d) => this.rig.setZoom(this.rig.zoomTarget + d);
     this.input.onKey = (k) => this.onKey(k);
-    this.input.onDrag = (nx, ny) => this.placement.drag(nx, ny);
+    this.input.onLook = (dx, dy) => { if (!this.title && !this.placement.active && !this.ui.modalOpen) this.rig.look(dx, dy); };
+    this.input.onDrag = (nx, ny, phase) => this.placement.drag(nx, ny, phase);
     this.ui.onAction = () => this.primaryAction();
     this.ui.onTool = () => this.useTool();
+    this.ui.onJump = () => this.jump();
+    this.player.onLand = (k) => {
+      if (k > 0.5) this.rig.shake(0.05 * k, 0.12);
+      audio.play('step', { tile: this.world.tile(this.player.pos.x, this.player.pos.z) });
+    };
+    this.player.onSplash = () => audio.play('splash');
   }
 
-  private tileFree(x: number, z: number, allowed: number[]): boolean {
+  private tileFree(x: number, z: number, allowed: number[], debrisOk = false): boolean {
     const L = this.world.layout;
     if (!L || x < 0 || z < 0 || x >= L.w || z >= L.d) return false;
     const t = L.tiles[z * L.w + x];
     if (!allowed.includes(t) || L.blocked[z * L.w + x]) return false;
-    for (const nv of this.world.nodes) if (Math.floor(nv.node.x) === x && Math.floor(nv.node.z) === z && nv.growth > 0.05 && !(nv.node.once && nv.growth < 1)) return false;
+    for (const nv of this.world.nodes) {
+      if (Math.floor(nv.node.x) !== x || Math.floor(nv.node.z) !== z) continue;
+      if (nv.growth > 0.05 && !(nv.node.once && nv.growth < 1) && !(debrisOk && this.ctx.gathering.isDebris(nv.node))) return false;
+    }
     return true;
   }
 
@@ -257,12 +315,56 @@ export class Game implements GameApi {
       this.ctx.quests.refresh();
       this.loadRegion(region, anchor, true, isNew ? undefined : { x: st.player.x, z: st.player.z });
       this.ui.buildHud();
+      this.fpHands.build(st.player.look);
+      this.applyView(this.settings.view);
       this.dayCoinsStart = st.player.coins;
       if (isNew) {
         this.save();
-        setTimeout(() => this.ui.toast(`Bienvenue à ${st.player.farmName} ! Allez parler à Moss 👴`, '🌿', 'good'), 1200);
+        const automated = navigator.webdriver && !/[?&]intro=1/.test(location.search);
+        if (this.settings.intro && !automated) this.playIntro();
+        else this.afterIntro();
       }
     }, isNew ? `Jour 1 · ${SEASON_NAMES.spring}` : '');
+  }
+
+  /** Story intro: a short animated cut-scene over the sleeping farm. */
+  playIntro(): void {
+    const st = this.ctx.state;
+    const V = THREE.Vector3;
+    const hc = new V(FARM.house.x + 2.5, 1.4, FARM.house.z + 2.4);
+    this.ui.setHudVisible(false);
+    if (this.rig.view === 'fp') this.applyView('iso');
+    this.player.teleport(41, 23.5, -Math.PI / 2);
+    const moss = () => this.entities.npc('moss');
+    const shots: Shot[] = [
+      { dur: 6.5, text: 'Au cœur de Green Valley, il y avait autrefois une ferme pleine de vie…', cam: (t) => { const a = 0.7 + t * 0.05; return { pos: new V(26 + Math.cos(a) * 32, 21 - t * 0.6, 22 + Math.sin(a) * 32), look: new V(24, 0, 20) }; } },
+      { dur: 7, text: '…la ferme de grand-mère Rose. Depuis son départ, la maison s\'est endormie sous le lierre et les herbes folles.', cam: (t) => { const a = 0.75 + t * 0.07; return { pos: new V(hc.x + Math.cos(a) * 10.5, 4.6, hc.z + Math.sin(a) * 10.5), look: hc }; } },
+      { dur: 9, title: `🌿 ${st.player.farmName} 🌿`, text: `Aujourd'hui, ${st.player.name} arrive pour lui redonner vie.`, start: () => this.player.walkTo(FARM.spawn.x + 2, FARM.spawn.z + 3), cam: () => { const p = this.player.pos; return { pos: new V(p.x + 4.2, p.y + 3, p.z + 5.6), look: new V(p.x - 1.2, p.y + 1, p.z - 0.4) }; } },
+      { dur: 6, who: 'Moss', text: 'Te voilà enfin ! Viens me voir, j\'ai beaucoup de choses à te raconter.', start: () => { const m = moss(); if (m) m.talking = 6; if (this.player.pos.distanceTo(new V(16.5, 0, 20)) > 2.5) this.player.teleport(16.5, 19.6); this.player.path = []; this.player.faceTo(17, 15.5); this.player.emote('wave'); }, cam: () => { const m = moss(); const p = this.player.pos; const mx = m ? (m.pos.x + p.x) / 2 : p.x, mz = m ? (m.pos.z + p.z) / 2 : p.z; return { pos: new V(mx + 5.2, 3.4, mz + 6.4), look: new V(mx, 0.9, mz) }; } },
+    ];
+    this.cutscene = new Cutscene(this.ui.root, this.renderer.camera as THREE.PerspectiveCamera, shots, () => {
+      this.cutscene = null;
+      this.player.path = [];
+      this.player.pathTarget = null;
+      this.ui.setHudVisible(true);
+      this.rig.snap(this.player.pos);
+      this.applyView(this.settings.view);
+      this.afterIntro();
+    });
+  }
+
+  replayIntro(): void {
+    if (this.world.region !== 'farm') { this.ui.toast('L\'introduction se joue à la ferme : revenez-y pour la revoir.', '🎬'); return; }
+    const p = this.player.pos.clone();
+    this.playIntro();
+    const done = () => { if (!this.cutscene) this.player.teleport(p.x, p.z); else setTimeout(done, 300); };
+    setTimeout(done, 300);
+  }
+
+  private afterIntro(): void {
+    const st = this.ctx.state;
+    setTimeout(() => this.ui.toast(`Bienvenue à ${st.player.farmName} ! Suivez la flèche jaune jusqu'à Moss 👴`, '🌿', 'good'), 600);
+    setTimeout(() => this.ui.tip('controls', '🕹️', 'Premiers pas', 'Glissez le pouce à gauche pour marcher. La flèche jaune et le cadre en haut à gauche vous disent toujours quoi faire. Le gros bouton rond fait l\'action du moment (parler, récolter, couper…).'), 2500);
   }
 
   async resetGame(): Promise<void> {
@@ -289,7 +391,12 @@ export class Game implements GameApi {
       this.player.celebrate();
       this.ui.reveal(() => h('div', null, h('span.em', null, '⭐'), h('h2', null, `Niveau ${p.level} !`), h('p', null, 'Nouvelles graines, recettes et animaux disponibles. +5 💎')));
     });
-    on('quest:done', (p) => { audio.play('quest'); this.ui.toast(`Quête terminée : ${p.title}`, '📜', 'good'); });
+    on('quest:done', (p) => {
+      audio.play('quest');
+      const q = this.ctx.quests.active.find((a) => a.id === p.id);
+      if (q?.kind === 'story') setTimeout(() => this.autoClaimStory(p.id), 900);
+      else this.ui.toast(`Quête terminée : ${p.title} — touchez-la pour la récompense`, '📜', 'good');
+    });
     on('quest:new', (p) => { if (p.story) setTimeout(() => this.ui.toast(`Nouvelle quête : ${p.title}`, '⭐'), 600); });
     on('collection:new', (p) => { if (p.cat !== 'creatures' && p.cat !== 'fish') this.ui.toast(`Nouvelle entrée de collection : ${item(p.id).name !== p.id ? item(p.id).name : DECOR_BY_ID[p.id]?.name ?? p.id}`, '📖'); });
     on('milestone', (p) => this.ui.toast(`Collection ${Math.round(p.pct * 100)}% ! +${p.gems} 💎`, '🏆', 'good'));
@@ -319,8 +426,19 @@ export class Game implements GameApi {
     on('friend:reward', (p) => this.ui.toast(`${NPC_BY_ID[p.npc].name} vous offre : ${p.reward}`, '🎁', 'good'));
     on('festival:start', (p) => { this.ui.toast(`${p.name} commence au village !`, FESTIVAL_BY_ID[p.id]?.icon ?? '🎉', 'good'); this.musicT = 0; });
     on('rainbow', () => { this.ui.toast('Un arc-en-ciel ! Les créatures rares sortent...', '🌈', 'good'); this.ctx.state.flags.rainbowDay = this.ctx.state.time.day; });
-    on('lightning', () => { this.sky.flash = 1.2; setTimeout(() => audio.play('thunder'), 300 + Math.random() * 900); });
-    on('weather:changed', () => { this.musicT = 0; });
+    on('lightning', () => {
+      if (this.world.layout.indoor) { this.sky.flash = 0.5; setTimeout(() => audio.play('thunder'), 900); return; }
+      this.sky.flash = 1.4;
+      const d = this.weatherFx.strike(this.player.pos, this.renderer.camera, (x, z) => this.world.heightAt(x, z));
+      if (this.settings.haptics) audio.vibrate(30);
+      setTimeout(() => { audio.play('thunder'); if (d < 22) this.rig.shake(0.06, 0.4); }, Math.min(1800, d * 45));
+    });
+    on('weather:changed', () => {
+      this.musicT = 0;
+      const w = this.ctx.state.weather.current;
+      if (w === 'rain' || w === 'storm') this.ui.tip('rain', '🌧️', 'Il pleut !', 'Bonne nouvelle : la pluie arrose toutes vos cultures. Certains poissons et créatures ne sortent que par temps de pluie.');
+    });
+    on('hour', (p) => { if (p.hour === 20) this.ui.tip('night', '🌙', 'La nuit tombe', 'Les lucioles et créatures nocturnes sortent. Quand vous êtes fatigué·e, dormez dans votre lit : pas de pénalité si vous veillez tard.'); });
     on('buff', (p) => this.ui.toast(BUFF_NAMES[p.id] ?? 'Bonus', '✨', 'good'));
     on('pass:tier', (p) => this.ui.toast(`Cozy Pass : palier ${p.tier} atteint !`, '🎟️', 'good'));
     on('mine:deepest', (p) => this.ui.toast(`Nouveau record : niveau ${p.floor}`, '⛏️', 'good'));
@@ -340,6 +458,23 @@ export class Game implements GameApi {
     on('trees:changed', () => this.world.farm?.refreshTrees());
     on('node:depleted', (p) => this.onNodeDepleted(p));
     on('day:start', () => this.onDayStart());
+    on('hamlet:arrival', (p) => {
+      this.ui.toast(`${p.name} s'installe à Clairefontaine !`, '🏡', 'good');
+      this.entities.syncVillagers();
+    });
+    on('hamlet:changed', () => this.entities.syncVillagers());
+    on('hamlet:produced', (p) => { this.lastHamletProduce = p; });
+    on('hamlet:level', (p) => {
+      audio.play('levelup');
+      this.ui.confetti();
+      this.ui.reveal(() => h('div', null, h('span.em', null, '🏘️'), h('h2', null, `Clairefontaine : ${p.name} !`), h('p', null, p.reward ? `Débloqué : ${p.reward}` : ''), h('p.muted', null, 'Votre hameau grandit. Continuez à construire des logements !')));
+    });
+    on('hamlet:goal', (p) => {
+      audio.play('quest');
+      const r = p.reward;
+      const parts = [r.coins ? `+${r.coins} 🪙` : '', r.gems ? `+${r.gems} 💎` : '', ...(r.items ?? []).map(([id, q]: [string, number]) => `${(DECOR_BY_ID[id]?.icon ?? item(id).icon)}×${q}`)].filter(Boolean).join(' ');
+      this.ui.toast(`Objectif du hameau : ${p.text} ✓ ${parts}`, '📒', 'good');
+    });
     on('slept', (p) => this.onSlept(p.passedOut));
     on('finale', () => {
       this.ui.confetti();
@@ -363,6 +498,7 @@ export class Game implements GameApi {
     this.mineLadder = null;
     this.mineLadderPos = null;
     this.world.load(region, floor);
+    this.world.house?.setFirstPerson(this.rig.view === 'fp');
     st.player.region = region;
     if (region !== 'house' && region !== 'mine') this.lastSeason = seasonOfDay(st.time.day);
     if (region === 'house' || region === 'mine' || region === 'frosty') st.player.riding = region === 'frosty' ? st.player.riding : false;
@@ -385,6 +521,7 @@ export class Game implements GameApi {
     this.rig.bounds = region === 'house' ? { x0: 8, z0: 5, x1: 14, z1: 9 } : { x0: 2, z0: 2, x1: L.w - 2, z1: L.d - 2 };
     this.player.setLantern(region === 'mine');
     this.particles.clear();
+    this.life.clear();
     if (region === 'mine' && floor && floor.floor % 5 === 0) this.revealLadder(11.5, 6.5);
     this.festivalSprite?.removeFromParent();
     this.festivalSprite = null;
@@ -401,9 +538,25 @@ export class Game implements GameApi {
     }
     this.ctx.progress('visit', region);
     if (this.weatherFx) this.placePuddles();
+    if (!this.title) this.regionTip(region);
   }
 
-  travel(region: RegionId, anchor?: string): void {
+  private regionTip(region: RegionId): void {
+    const st = this.ctx.state;
+    const tips: Partial<Record<RegionId, [string, string, string]>> = {
+      hamlet: ['🏕️', 'Clairefontaine, votre hameau', 'Ouvrez 🔨 Construire et placez une cabane : un voyageur s\'y installera aussitôt. Le registre 📒 près du feu de camp suit vos villageois, la production et vos objectifs.'],
+      village: ['🏘️', 'Willowbrook', 'Les bâtiments en ruine se restaurent avec des matériaux : approchez-vous et touchez 🔨. Parlez aussi aux habitants chaque jour !'],
+      mine: ['⛏️', 'Les mines', 'Cassez les rochers à la pioche : l\'un d\'eux cache l\'échelle vers l\'étage suivant. Tous les 5 étages, un ascenseur !'],
+      house: ['🏡', 'Chez vous', 'Le lit permet de dormir jusqu\'au lendemain matin. Touchez 🔨 pour décorer et déplacer vos meubles.'],
+      highlands: ['⛰️', 'Les Hautes Terres', 'Une immense contrée à explorer librement ! Maj ou 🏃 pour courir, Espace ou ⤴ pour sauter (par-dessus les ruisseaux), et vous pouvez nager dans le grand lac : un trésor attend sur l\'île…'],
+      woods: ['🌲', 'Whispering Woods', 'Les créatures sont timides : avancez lentement (sans courir) pour les observer.'],
+    };
+    const t = tips[region];
+    if (t) setTimeout(() => this.ui.tip(`region_${region}`, t[0], t[1], t[2]), 1600);
+    if (region === 'farm' && st.time.day >= 2) setTimeout(() => this.ui.tip('hamlet_hint', '🏕️', 'Un sentier au sud…', 'Un sentier part du sud de votre ferme vers une clairière sauvage : Clairefontaine. Vous pourrez y fonder votre propre hameau et accueillir des villageois !'), 2500);
+  }
+
+  travel(region: RegionId, anchor?: string, walkIn = false): void {
     if (this.title) return;
     const st = this.ctx.state;
     if (!st.regions[region].unlocked) {
@@ -411,12 +564,33 @@ export class Game implements GameApi {
       return;
     }
     // default arrival anchors
-    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door' };
+    const defaults: Record<string, string> = { farm: 'spawn', village: 'farm_entry', woods: 'farm_entry', mountains: 'farm_entry', coast: 'village_entry', frosty: 'mountains_entry', ember: 'village_entry', house: 'door', hamlet: 'farm_entry', highlands: 'farm_entry' };
     audio.play('door');
-    this.ui.fade(() => {
+    // a rare ad may play at this natural break (never mid-action)
+    const outdoor = region !== 'house' && region !== 'mine';
+    const def = REGION_BY_ID[region];
+    ads.breakpoint().then(() => this.ui.crossfade(this.renderer.snapshot(), () => {
       this.loadRegion(region, anchor ?? defaults[region] ?? null);
+      if (walkIn && outdoor) this.walkIn();
       this.save();
-    });
+    }, walkIn && outdoor && def ? `${def.icon} ${def.name}` : ''));
+  }
+
+  /** Arriving from a road: start at the border and walk into the region. */
+  private walkIn(): void {
+    const L = this.world.layout;
+    const px = this.player.pos.x, pz = this.player.pos.z;
+    const edges: [number, number, number][] = [[px, -1, 0], [L.w - px, 1, 0], [pz, 0, -1], [L.d - pz, 0, 1]];
+    edges.sort((a, b) => a[0] - b[0]);
+    const [dist, dx, dz] = edges[0];
+    if (dist > 6) return;
+    const back = Math.min(1.8, Math.max(0, dist - 0.6));
+    const sx = px + dx * back, sz = pz + dz * back;
+    if (back < 0.4 || this.world.isBlocked(sx, sz, 0.25)) return;
+    this.player.teleport(sx, sz, Math.atan2(-dx, -dz));
+    this.rig.snap(this.player.pos);
+    this.portalCooldown = 2.2;
+    this.player.walkTo(px, pz);
   }
 
   goMine(floor: number): void {
@@ -483,6 +657,7 @@ export class Game implements GameApi {
     const st = this.ctx.state;
     const earned = Math.max(0, st.stats.coinsEarned ?? 0) - this.lastDayCoins;
     this.lastDayCoins = st.stats.coinsEarned ?? 0;
+    this.ctx.adRewards.setYesterdayEarnings(earned);
     if (passedOut || this.world.region !== 'house') this.loadRegion('house', 'bed', true);
     const fest = this.ctx.festivals.today();
     this.ui.openPanel('daySummary', {
@@ -490,14 +665,16 @@ export class Game implements GameApi {
       weather: `${WEATHER_ICONS[st.weather.today]} ${WEATHER_NAMES[st.weather.today]}`,
       forecast: `${WEATHER_ICONS[st.weather.tomorrow]} ${WEATHER_NAMES[st.weather.tomorrow]}`,
       fest: fest && fest.id !== 'rainbow' ? `${fest.icon} Aujourd'hui : ${fest.name} !` : undefined,
+      hamlet: this.lastHamletProduce ? [...Object.entries(this.lastHamletProduce.items).map(([id, q]) => `${item(id).icon}${q}`), this.lastHamletProduce.coins ? `🪙${this.lastHamletProduce.coins}` : ''].filter(Boolean).join(' ') : undefined,
     });
+    this.lastHamletProduce = null;
   }
 
   sleep(): void {
-    this.ui.fade(() => {
+    ads.breakpoint().then(() => this.ui.fade(() => {
       audio.play('sleep');
       this.ctx.time.sleep(false);
-    }, '💤 Bonne nuit…', true);
+    }, '💤 Bonne nuit…', true));
   }
 
   private placePuddles(): void {
@@ -535,11 +712,11 @@ export class Game implements GameApi {
       st.playSeconds += dt;
     }
     if (this.title) {
-      this.rig.yaw += dt * 0.04;
+      this.rig.yawTarget += dt * 0.04;
       st.time.minute = 17 * 60 + Math.sin(this.elapsed * 0.05) * 30;
     }
     // input -> world space movement
-    this.input.enabled = !this.title && !this.placement.active;
+    this.input.enabled = !this.title && !this.placement.active && !this.cutscene;
     this.input.update();
     let mx = 0, mz = 0;
     if (active && !this.fishing.active) {
@@ -548,23 +725,47 @@ export class Game implements GameApi {
     }
     if (this.title) this.player.root.visible = false;
     else this.player.root.visible = !this.previewRig;
+    const fp = this.rig.view === 'fp';
+    if (fp) this.player.rig.root.visible = this.ui.panelName === 'wardrobe';
+    this.player.lockFacing = fp && !this.title ? Math.atan2(this.rig.forward.x, this.rig.forward.z) : null;
+    this.player.sprint = this.sprintToggle || this.input.isDown('shift');
     const prev = this.player.pos.clone();
     this.player.update(active ? dt : 0, mx, mz, this.sky.state.night);
     st.stats.walked = (st.stats.walked ?? 0) + prev.distanceTo(this.player.pos);
     const speed = prev.distanceTo(this.player.pos) / Math.max(dt, 0.001);
     this.entities.update(active || this.title ? dt : 0, this.player.pos, speed);
+    this.entities.updateMarkers(dt);
+    this.guide.update(dt, !this.title && !this.placement.active && !this.cutscene && this.settings.guideArrow);
+    this.updateEmoteBubble(dt);
+    this.moveSpeed = speed;
+    if (!this.title) this.net.update(dt);
+    this.remotes.update(dt, fp);
     this.fishing.update(dt);
     // camera & sky
-    this.rig.update(dt, this.player.pos, this.player.vel);
+    this.placement.update(dt);
+    this.fpHands.setAspect(this.renderer.camera.aspect);
+    this.fpHands.light(this.sky.sun, this.sky.hemi, this.sky.state.night);
+    this.fpHands.update(dt, this.player, { visible: fp && !this.title && !this.placement.active && !this.ui.modalOpen, turnSpeed: this.rig.turnSpeed, pitch: this.rig.fpPitch, tool: this.ctx.state.player.activeTool, tier: this.ctx.state.player.tools[this.ctx.state.player.activeTool] ?? 0 });
+    if (this.cutscene) this.cutscene.update(dt);
+    else if (this.placement.active) this.rig.update(dt, this.placement.center, new THREE.Vector3());
+    else this.rig.update(dt, this.player.pos, this.player.vel);
     this.rig.updateSeeThrough(this.player.pos);
     const weather = this.world.layout.indoor ? 'sun' : st.weather.current;
     this.sky.overcast += ((weather === 'rain' ? 0.7 : weather === 'storm' ? 1 : weather === 'cloudy' ? 0.45 : weather === 'fog' ? 0.6 : weather === 'snow' ? 0.5 : 0) - this.sky.overcast) * Math.min(1, dt);
     this.sky.storm = weather === 'storm' ? 1 : 0;
     this.sky.update(st.time.minute, this.elapsed, this.player.pos, this.renderer.scene);
+    globalUniforms.uPlayerPos.value.copy(this.player.pos);
+    {
+      const outdoorG = !this.world.layout.indoor;
+      this.renderer.grade.warm = outdoorG ? this.sky.warmth(st.time.minute) * (1 - this.sky.overcast * 0.7) : this.world.region === 'house' ? 0.35 : 0;
+      this.renderer.grade.night = this.world.region === 'house' ? 0 : this.sky.state.night;
+      this.renderer.grade.time = this.elapsed;
+    }
     const fog = this.renderer.scene.fog as THREE.Fog;
     const fogK = weather === 'fog' ? 0.45 : weather === 'snow' || weather === 'rain' ? 0.75 : 1;
-    fog.near = (this.world.region === 'mine' ? 22 : 42) * fogK;
-    fog.far = (this.renderer.profile.drawDistance + 20) * fogK;
+    const zoomOut = this.rig.view === 'fp' ? 0.6 : Math.max(0, this.rig.zoom - 1);
+    fog.near = (this.world.region === 'mine' ? 22 : 42 + zoomOut * 28) * fogK;
+    fog.far = (this.renderer.profile.drawDistance + 20 + zoomOut * 40) * fogK;
     globalUniforms.uSnow.value = this.world.layout.seasonal && seasonOfDay(st.time.day) === 'winter' ? 1 : this.world.region === 'frosty' ? 1 : 0;
     updateGlow(this.sky.state.night);
     updateWindows(this.sky.state.night);
@@ -572,6 +773,13 @@ export class Game implements GameApi {
     this.world.update(dt, this.elapsed, night, this.player.pos, this.renderer.camera);
     this.weatherFx.update(dt, this.player.pos, weather, seasonOfDay(st.time.day), night, this.ctx.weather.rainbow(), !this.world.layout.indoor, this.world.region, (x, z) => this.world.heightAt(x, z), this.renderer.camera);
     this.particles.update(dt);
+    const outdoor = !this.world.layout.indoor;
+    globalUniforms.uCloud.value = outdoor ? Math.max(0, 1 - night * 1.6) * (1 - this.sky.overcast * 0.75) : 0;
+    this.life.update(dt, this.elapsed, this.player.pos, {
+      active: outdoor, night, weather, region: this.world.region,
+      groundY: (x, z) => this.world.heightAt(x, z),
+      walkable: (x, z) => this.world.walkable(x, z) && !this.world.isBlocked(x, z, 0.1),
+    });
     // periodic logic
     this.refreshNodesT -= dt;
     if (this.refreshNodesT <= 0) {
@@ -598,9 +806,8 @@ export class Game implements GameApi {
     const cine = this.renderer.cine;
     if (cine) {
       cine.haze.copy(this.sky.state.fog);
-      cine.night = this.sky.state.night;
       cine.overcast = this.sky.overcast;
-      cine.dof = this.title ? 1.4 : 1;
+      cine.dof = this.title ? 1.4 : this.rig.view === 'fp' ? 0.35 : 1;
       cine.exposure = this.world.region === 'mine' ? 1.1 : 0.78 + this.sky.state.night * 0.7;
     }
     this.renderer.render();
@@ -660,12 +867,13 @@ export class Game implements GameApi {
     if (this.current) this.ui.setAction({ icon: this.current.icon, label: this.current.label, enabled: true });
     else {
       const t = TOOL_BY_ID[this.ctx.state.player.activeTool];
-      this.ui.setAction({ icon: t.icon, label: t.name, enabled: false });
+      this.ui.setAction({ icon: t.icon, label: `${t.name} · ${TOOL_TIERS[this.ctx.state.player.tools[t.id as ToolId]]}`, enabled: false });
     }
   }
 
   /** Everything you can interact with, sorted by distance (facing bonus). */
   private findTarget(): ActionTarget | null {
+    if (this.player.swimming) return { icon: '🏊', label: 'Nager', run: () => this.ui.toast('Regagnez la rive pour agir.', '🏊') };
     const st = this.ctx.state;
     const px = this.player.pos.x, pz = this.player.pos.z;
     const fx = Math.sin(this.player.facing), fz = Math.cos(this.player.facing);
@@ -674,6 +882,8 @@ export class Game implements GameApi {
       const d = Math.hypot(dx, dz);
       if (d > radius) return Infinity;
       const facing = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
+      // first person: only what's in front of you (the dot in the middle of the screen)
+      if (this.rig.view === 'fp') return facing < 0.55 && d > 0.6 ? Infinity : d - facing * 1.2;
       return d - facing * 0.6;
     };
     let best: ActionTarget | null = null;
@@ -703,6 +913,13 @@ export class Game implements GameApi {
       for (const t of st.farm.fruitTrees) {
         if (!this.ctx.farming.treeHasFruit(t)) continue;
         consider(score(t.x + 0.5, t.z + 0.5, 1.5), () => ({ icon: FRUIT_TREES.find((f) => f.id === t.kind) ? item(FRUIT_TREES.find((f) => f.id === t.kind)!.fruit).icon : '🍎', label: 'Cueillir', run: () => this.player.act('pet', null, () => { this.ctx.farming.harvestTree(t.uid); }, 0.5) }));
+      }
+    }
+    if (this.world.region === 'hamlet') {
+      for (const p of st.hamlet.placed) {
+        const door = this.world.hamlet?.doorOf(p.uid);
+        if (!door) continue;
+        consider(score(door.x, door.z, 1.4) + 0.2, () => this.hamletBuildingAction(p.uid, p.kind));
       }
     }
     if (this.world.region === 'house') {
@@ -793,10 +1010,25 @@ export class Game implements GameApi {
       case 'elevator': return { icon: '🛗', label: 'Ascenseur', run: () => this.ui.openPanel('elevator') };
       case 'bridge': return { icon: '🌉', label: 'Pont cassé', run: () => this.brokenBridge() };
       case 'secret': return { icon: it.icon, label: it.label, run: () => this.secret(it.data.secret, it.label) };
+      case 'lookout': return { icon: it.icon, label: it.label, run: () => this.panorama(it.data.secret, it.label) };
       case 'camp': return { icon: '⛺', label: 'Se reposer', run: () => { this.player.celebrate(); st.player.buffs.luck = Math.max(st.player.buffs.luck ?? 0, st.absMinute) + 60; this.ui.toast('Un moment au coin du feu… +Chance', '🔥', 'good'); } };
       case 'shrine': return { icon: '💜', label: 'Prier', run: () => this.shrine() };
       case 'fountain': return { icon: '⛲', label: 'Faire un vœu', run: () => this.fountain() };
       case 'festival': return { icon: it.icon, label: it.label, run: () => this.playFestival() };
+      case 'register': {
+        const n = this.ctx.hamlet.chestCount();
+        return { icon: '📒', label: n ? `Registre (${n} 🧺)` : 'Registre', run: () => this.ui.openPanel('hamlet') };
+      }
+      case 'traveller': return { icon: '⛺', label: 'Voyageur', run: runFace(() => this.traveller()) };
+      case 'villager': {
+        const v = this.ctx.hamlet.villager(it.data.uid);
+        if (!v) return null;
+        return { icon: v.wish ? '💭' : '💬', label: `Parler à ${v.name}`, run: runFace(() => this.talkVillager(v.uid)) };
+      }
+      case 'passerby': {
+        const ag = it.data.agent as VillagerAgent;
+        return { icon: '👋', label: `Saluer ${ag.def.name}`, run: runFace(() => { ag.talking = 2.5; audio.play('pop'); this.ui.dialogue({ name: ag.def.name, role: 'Habitant·e de Willowbrook', meter: '' }, ag.line, [{ label: 'Bonne journée ! 👋', cls: 'ghost', fn: () => this.ui.closeDialogue() }]); }) };
+      }
     }
     return null;
   }
@@ -858,7 +1090,9 @@ export class Game implements GameApi {
   private buildingAction(uid: string, kind: string): ActionTarget | null {
     const st = this.ctx.state;
     switch (kind) {
-      case 'house': return { icon: '🏡', label: 'Entrer', run: () => this.travel('house', 'door') };
+      case 'house':
+        if (st.flags.houseRuined) return { icon: '🔨', label: 'Réparer la maison', run: () => this.repairHouse() };
+        return { icon: '🏡', label: 'Entrer', run: () => this.travel('house', 'door') };
       case 'workshop': return { icon: '🔨', label: 'Établi', run: () => this.ui.openPanel('craft', 'workbench') };
       case 'kitchen': return { icon: '🍳', label: 'Cuisiner', run: () => this.ui.openPanel('craft', 'kitchen') };
       case 'forge': return { icon: '🔥', label: 'Fourneau', run: () => this.ui.openPanel('craft', 'forge') };
@@ -875,6 +1109,91 @@ export class Game implements GameApi {
       }
     }
     return null;
+  }
+
+  private hamletBuildingAction(uid: string, kind: string): ActionTarget | null {
+    const def = HAMLET_BY_ID[kind];
+    const hs = this.ctx.hamlet;
+    const st = this.ctx.state;
+    if (def.kind === 'home') {
+      const res = hs.residents(uid);
+      return { icon: def.icon, label: res.length ? res.map((v) => v.name).join(' & ') : `${def.name} (libre)`, run: () => this.ui.toast(res.length ? `${def.name} de ${res.map((v) => v.name).join(', ')} · ${res.length}/${def.beds} lit(s)` : `${def.name} libre : un voyageur s'y installera demain matin.`, def.icon) };
+    }
+    switch (kind) {
+      case 'h_tavern': return { icon: '🍺', label: 'Boire un cidre (25 🪙)', run: () => {
+        if (st.flags.tavernDay === st.time.day) { this.ui.toast('Un verre par jour, c\'est la règle de la maison 😉', '🍺'); return; }
+        if (!this.ctx.economy.spend(25)) { this.ui.toast('Pas assez de pièces', '🪙', 'warn'); return; }
+        st.flags.tavernDay = st.time.day;
+        st.player.buffs.speed = Math.max(st.player.buffs.speed ?? 0, st.absMinute) + 120;
+        for (const v of st.hamlet.villagers) v.happiness = Math.min(100, v.happiness + 2);
+        audio.play('eat');
+        this.player.celebrate();
+        this.particles.notes(this.player.pos.x, this.player.pos.y + 1.8, this.player.pos.z, 3);
+        this.ui.toast('Santé ! Les villageois trinquent avec vous. +Vitesse', '🍺', 'good');
+      } };
+      case 'h_market': return { icon: '🏪', label: 'Vendre à la halle', run: () => this.ui.openPanel('sell', 'market') };
+      case 'h_well': return { icon: '🪣', label: 'Puiser de l\'eau', run: () => { this.ctx.tools.refill(); audio.play('refill'); this.ui.toast('Arrosoir rempli', '💧'); } };
+      case 'h_bandstand': return { icon: '🎶', label: 'Danser', run: () => {
+        this.player.celebrate();
+        this.particles.notes(this.player.pos.x, this.player.pos.y + 1.8, this.player.pos.z, 4);
+        audio.play('levelup');
+        if (st.flags.danceDay !== st.time.day) {
+          st.flags.danceDay = st.time.day;
+          for (const v of st.hamlet.villagers) v.happiness = Math.min(100, v.happiness + 4);
+          this.ui.toast('Vous dansez avec les villageois ! +Bonheur pour tous', '💃', 'good');
+        } else this.ui.toast('Encore une petite danse !', '💃');
+      } };
+      case 'h_statue': return { icon: '🗿', label: 'Admirer', run: () => this.ui.toast(`« À ${st.player.name}, fondateur·rice de ${st.hamlet.name} » — gravé dans la pierre.`, '🗿') };
+    }
+    if (def.kind === 'work') {
+      const ws = hs.workers(uid);
+      return { icon: def.icon, label: `${def.name} (${ws.length}/${def.jobs})`, run: () => this.ui.openPanel('hamletBuilding', uid) };
+    }
+    return { icon: def.icon, label: def.name, run: () => this.ui.toast(def.desc, def.icon) };
+  }
+
+  private traveller(): void {
+    const hs = this.ctx.hamlet;
+    const name = 'Vagabond Lou';
+    const text = hs.population() === 0
+      ? 'Bienvenue à Clairefontaine ! Cette clairière n\'attend qu\'un peu de courage. Construisez une cabane et je connais des gens qui viendraient s\'installer… moi le premier !'
+      : `Clairefontaine compte déjà ${hs.population()} habitant${hs.population() > 1 ? 's' : ''}. Chaque logement libre attire un nouveau voyageur au lever du jour, surtout si le hameau est joli et que tout le monde est heureux.`;
+    audio.play('pop');
+    this.ui.dialogue({ name, role: 'Voyageur', meter: '🎒' }, text, [
+      { label: '📒 Registre', cls: 'sky', fn: () => this.ui.openPanel('hamlet') },
+      { label: '🔨 Construire', fn: () => this.ui.openPanel('build') },
+      { label: 'Merci !', cls: 'ghost', fn: () => this.ui.closeDialogue() },
+    ]);
+  }
+
+  private talkVillager(uid: string): void {
+    const hs = this.ctx.hamlet;
+    const v = hs.villager(uid);
+    if (!v) return;
+    const text = hs.talk(uid);
+    const ag = this.entities.villagerAgent(uid);
+    if (ag) ag.talking = 2.5;
+    audio.play('pop');
+    const job = v.jobUid ? HAMLET_BY_ID[this.ctx.state.hamlet.placed.find((p) => p.uid === v.jobUid)?.kind ?? '']?.job : null;
+    const hearts = '❤️'.repeat(Math.round(v.friendship / 20)) + '·'.repeat(5 - Math.round(v.friendship / 20));
+    const opts: { label: string; cls?: string; fn: () => void }[] = [];
+    if (v.wish) {
+      const can = hs.canDeliverWish(uid);
+      opts.push({ label: `${can ? '🧺 Donner' : '💭 Souhait'} ${item(v.wish.id).icon}×${v.wish.qty}`, cls: can ? 'peach' : 'ghost', fn: () => {
+        if (!can) { this.ui.toast(`Il vous faut ${v.wish!.qty}× ${item(v.wish!.id).name} (vous en avez ${this.ctx.inventory.count(v.wish!.id)})`, item(v.wish!.id).icon, 'warn'); return; }
+        const r = hs.deliverWish(uid);
+        if (r.ok) {
+          audio.play('quest');
+          if (ag) this.particles.hearts(ag.pos.x, ag.pos.y + 1.6, ag.pos.z, 5);
+          this.ui.dialogue({ name: v.name, role: job ?? 'Villageois·e', meter: hearts }, `Oh merci, merci ! Tu es formidable ! Tiens, prends ça. (+${r.coins} 🪙${r.gems ? ' +1 💎' : ''})`, [{ label: 'Avec plaisir 😊', fn: () => this.ui.closeDialogue() }]);
+        }
+      } });
+    }
+    if (v.giftedDay !== this.ctx.state.time.day) opts.push({ label: '🎁 Offrir', cls: 'sky', fn: () => this.ui.openPanel('villagerGift', uid) });
+    opts.push({ label: '💼 Travail', cls: 'lav', fn: () => this.ui.openPanel('villager', uid) });
+    opts.push({ label: 'À bientôt 👋', cls: 'ghost', fn: () => this.ui.closeDialogue() });
+    const moodIcon = v.happiness >= 70 ? '😊' : v.happiness >= 40 ? '🙂' : '😟';
+    this.ui.dialogue({ name: `${v.name} ${moodIcon}`, role: job ?? (v.homeUid ? 'Sans emploi' : 'Sans logis'), meter: hearts }, text, opts);
   }
 
   private villageAction(id: string): void {
@@ -987,7 +1306,7 @@ export class Game implements GameApi {
       return;
     }
     rs.secrets.push(id);
-    const rewards: Record<string, [string, number]> = { grove: ['moonbloom', 0], igloo: ['warm_coat', 0], lighthouse: ['pearl', 2], spring: ['ember_core', 1], waterfall: ['aquamarine', 2] };
+    const rewards: Record<string, [string, number]> = { grove: ['moonbloom', 0], igloo: ['warm_coat', 0], lighthouse: ['pearl', 2], spring: ['ember_core', 1], waterfall: ['aquamarine', 2], stones: ['crystal_shard', 3], tower: ['geode', 3], lookout: ['aquamarine', 1], island: ['pearl', 3], windmill: ['geode', 2] };
     const [it, q] = rewards[id] ?? ['geode', 1];
     if (it === 'moonbloom') this.ctx.inventory.add('seed_moonbloom', 2, true);
     else if (it === 'warm_coat') this.ctx.inventory.add('frost_crystal', 3, true);
@@ -996,6 +1315,21 @@ export class Game implements GameApi {
     audio.play('discover');
     this.ui.confetti();
     this.ui.reveal(() => h('div', null, h('span.em', null, '✨'), h('h2', null, 'Secret découvert !'), h('p', null, `${label} — vous trouvez un petit trésor et 10 💎.`)));
+  }
+
+  /** Climb the lookout: the camera pulls far back for a sweeping view of the Highlands. */
+  private panorama(id: string, label: string): void {
+    const z0 = this.rig.zoomTarget, p0 = this.rig.pitchTarget;
+    this.rig.setZoom(2.4);
+    this.rig.pitchTarget = 0.42;
+    this.rig.rotate(Math.PI / 2);
+    audio.play('discover');
+    this.ui.toast('Quelle vue ! Glissez pour tourner la caméra.', '🔭');
+    setTimeout(() => {
+      this.rig.setZoom(z0);
+      this.rig.pitchTarget = p0;
+    }, 6500);
+    if (!this.ctx.state.regions[this.world.region].secrets.includes(id)) setTimeout(() => this.secret(id, label), 2500);
   }
 
   private shrine(): void {
@@ -1085,6 +1419,10 @@ export class Game implements GameApi {
       return;
     }
     if (this.player.busy) return;
+    if (this.player.swimming) {
+      this.ui.toast('Impossible en nageant — regagnez la rive !', '🏊', 'warn');
+      return;
+    }
     const t = this.current ?? this.findTarget();
     if (t) t.run();
     else this.useTool();
@@ -1111,6 +1449,7 @@ export class Game implements GameApi {
   /** Use the equipped tool on the area in front of the player. */
   useTool(): void {
     if (this.title || this.player.busy || this.ui.modalOpen) return;
+    if (this.player.swimming) return;
     audio.unlock();
     const st = this.ctx.state;
     const tool = st.player.activeTool;
@@ -1238,9 +1577,24 @@ export class Game implements GameApi {
     if (WALKABLE[this.world.tile(p.x, p.z)]) this.player.walkTo(p.x, p.z);
   }
 
+  sprintToggle = false;
+
+  /** Mobile sprint button: toggles running on/off. */
+  toggleSprint(): void {
+    this.sprintToggle = !this.sprintToggle;
+    this.ui.sprintBtn?.classList.toggle('on', this.sprintToggle);
+    audio.play('click');
+  }
+
+  jump(): void {
+    if (this.title || this.ui.modalOpen || this.placement.active || this.cutscene || this.fishing.active) return;
+    if (this.player.jump()) audio.play('pop');
+  }
+
   private onKey(k: string): void {
     if (this.title) return;
-    if (k === 'e' || k === ' ' || k === 'enter') this.primaryAction();
+    if (k === ' ') this.jump();
+    else if (k === 'e' || k === 'enter') this.primaryAction();
     else if (k === 'f') this.useTool();
     else if (k === 'r' || k === 'tab') {
       const tools: ToolId[] = ['hoe', 'can', 'sickle', 'axe', 'pickaxe', 'rod'];
@@ -1249,6 +1603,9 @@ export class Game implements GameApi {
     else if (k === 'm') this.ui.openPanel('map');
     else if (k === 'j') this.ui.openPanel('quests');
     else if (k === 'b') this.ui.openPanel('build');
+    else if (k === 'v') this.toggleView();
+    else if (k === '[' || k === ',') this.rotateCamera(Math.PI / 4);
+    else if (k === ']' || k === '.') this.rotateCamera(-Math.PI / 4);
     else if (k === 'escape') {
       if (this.placement.active) this.placement.cancel();
       else if (this.ui.overlay) this.ui.closePanel();
@@ -1274,7 +1631,7 @@ export class Game implements GameApi {
           this.player.teleport(px + inward.x * 1.5 + dx * 0, pz + inward.z * 1.5 + dz * 0);
           return;
         }
-        this.travel(p.to, p.anchor);
+        this.travel(p.to, p.anchor, true);
         return;
       }
     }
@@ -1308,21 +1665,23 @@ export class Game implements GameApi {
   }
 
   enterPlacement(kind: string, uid?: string): void {
-    if (this.world.region !== 'farm' && this.world.region !== 'house') {
-      this.ui.toast('Retournez à la ferme pour construire.', '🏡');
+    if (this.world.region !== 'farm' && this.world.region !== 'house' && this.world.region !== 'hamlet') {
+      this.ui.toast('Construisez à la ferme, dans la maison ou au hameau de Clairefontaine.', '🏡');
       return;
     }
-    if (BUILDING_BY_ID[kind]) {
+    if (BUILDING_BY_ID[kind] || HAMLET_BY_ID[kind]) {
       const a = this.ctx.building.affordable(kind);
       if (!a.ok) { this.ui.toast(a.reason!, '🔨', 'warn'); return; }
     }
     const f = this.frontPoint(2.5);
+    this.leaveFpForPlacement();
     this.input.dragMode = true;
     this.placement.start(kind, f, uid);
   }
 
   enterEditMode(): void {
-    if (this.world.region !== 'farm' && this.world.region !== 'house') return;
+    if (this.world.region !== 'farm' && this.world.region !== 'house' && this.world.region !== 'hamlet') return;
+    this.leaveFpForPlacement();
     this.input.dragMode = true;
     this.placement.beginEdit();
   }
@@ -1339,6 +1698,8 @@ export class Game implements GameApi {
     if (kind === 'placed') {
       this.world.farm?.refreshPlaced();
       this.world.farm?.refreshTrees();
+      this.world.hamlet?.refreshPlaced();
+      this.entities.syncVillagers();
       this.world.house?.refreshFurniture();
       this.world.rebuildGrass();
       this.entities.syncAnimals();
@@ -1348,6 +1709,221 @@ export class Game implements GameApi {
 
   refreshLook(): void {
     this.player.rebuild();
+    this.fpHands.build(this.ctx.state.player.look);
+    this.applyView(this.settings.view);
+  }
+
+  // ------------------------------------------------------------ guidance & story
+  guideInfo(): GuideInfo | null {
+    return this.guide?.info ?? null;
+  }
+
+  trackQuest(id: string | null): void {
+    this.guide.track(id);
+    this.guide.info = this.guide.compute();
+  }
+
+  groundY(x: number, z: number): number {
+    return this.world.heightAt(x, z);
+  }
+
+  /** "!" over NPCs the current objective sends you to, "?" when they have a reward or a delivery waiting. */
+  private npcMarker(npcId: string): string {
+    const qs = this.ctx.quests.active;
+    if (qs.some((q) => q.giver === npcId && q.kind !== 'story' && ((q.done && !q.claimed) || this.ctx.quests.canDeliver(q)))) return '?';
+    const info = this.guide?.info;
+    if (info && info.objective && !info.quest.done && this.guide.npcFor(info.quest, info.objective) === npcId) return '!';
+    for (const q of qs) {
+      if (q.done) continue;
+      for (const o of q.objectives) if (o.progress < o.count && o.type === 'talk' && o.target === npcId) return '!';
+      if (q.kind === 'village' && q.giver === npcId && this.ctx.state.quests.storyStep >= 5) return '!';
+    }
+    return '';
+  }
+
+  private autoClaimStory(id: string): void {
+    const q = this.ctx.quests.active.find((a) => a.id === id);
+    if (!q || !q.done || q.claimed) return;
+    const r = q.rewards;
+    this.ctx.quests.claim(id);
+    this.ui.confetti();
+    const next = this.ctx.quests.story;
+    const parts = [r.coins ? `+${r.coins} 🪙` : '', r.gems ? `+${r.gems} 💎` : '', r.xp ? `+${r.xp} XP` : '', ...(r.items ?? []).map((i) => `${item(i.id).icon}×${i.qty}`)].filter(Boolean).join('  ');
+    this.ui.reveal(() => h('div', null, h('span.em', null, '⭐'), h('h2', null, q.title), h('p', null, `Chapitre terminé ! ${parts}`),
+      next ? h('div.goalcard', { style: { textAlign: 'left', marginTop: '10px' } }, h('b', null, `➡️ Prochaine étape : ${next.title}`), h('div', { style: { fontSize: '14px', marginTop: '4px' } }, next.desc)) : null));
+    this.save();
+  }
+
+  private repairHouse(): void {
+    const st = this.ctx.state;
+    if (!st.flags.houseRuined) return;
+    const w = this.ctx.inventory.count('wood'), s = this.ctx.inventory.count('stone');
+    const enter = { label: '🚪 Entrer quand même', cls: 'ghost', fn: () => { this.ui.closeDialogue(); this.travel('house', 'door'); } };
+    if (w < 20 || s < 10) {
+      audio.play('pop');
+      this.ui.dialogue({ name: 'Maison de grand-mère Rose', role: 'À réparer', meter: '🏚️' }, `Le toit fuit et les fenêtres sont condamnées… Pour la réparer, il faut 🪵 20 bois et 🪨 10 pierres. Vous avez ${w}/20 bois et ${s}/10 pierres. Coupez des arbres 🪓 et cassez des cailloux ⛏️ autour de la ferme !`, [enter, { label: 'D\'accord 👍', fn: () => this.ui.closeDialogue() }]);
+      return;
+    }
+    this.ui.dialogue({ name: 'Maison de grand-mère Rose', role: 'À réparer', meter: '🏚️' }, 'Vous avez tout le nécessaire ! Réparer la maison avec 20 bois et 10 pierres ?', [
+      { label: '🔨 Réparer !', cls: 'peach', fn: () => {
+        this.ui.closeDialogue();
+        this.ctx.inventory.remove('wood', 20);
+        this.ctx.inventory.remove('stone', 10);
+        audio.play('build');
+        this.player.act('tool', 'axe', () => audio.play('chop'), 0.6, 0.5);
+        this.ui.fade(() => {
+          st.flags.houseRuined = false;
+          this.refreshWorld('placed');
+          this.ctx.progress('repair', 'house');
+          const d = this.world.layout.anchors.house_entry;
+          this.particles.sparkle(d.x, 1.5, d.z - 2, 0xfff0a0, 30);
+          this.rig.yawTarget = Math.PI * 0.75;
+        }, '🔨 Toc, toc, toc… on répare !').then(() => {
+          audio.play('levelup');
+          this.ui.confetti();
+          this.player.celebrate();
+          this.ui.reveal(() => h('div', null, h('span.em', null, '🏡'), h('h2', null, 'La maison est réparée !'), h('p', null, 'Un vrai toit, des fenêtres qui brillent le soir et une cheminée qui fume. Grand-mère Rose serait fière. Vous pouvez y dormir, cuisiner et la décorer.')));
+          this.save();
+        });
+      } },
+      enter,
+    ]);
+  }
+
+  rainbowOverlay(): number {
+    return this.weatherFx.rainbowIso && !this.title ? this.weatherFx.rainbowLevel : 0;
+  }
+
+  // ------------------------------------------------------------ emotes
+  emotes(): { id: string; icon: string; name: string }[] {
+    return EMOTES;
+  }
+
+  emote(id: string): void {
+    const def = EMOTE_BY_ID[id];
+    if (!def || this.title) return;
+    if (this.rig.view === 'fp') this.ui.toast(`${def.icon} ${def.name}`, def.icon);
+    this.player.emote(id);
+    this.showEmoteBubble(def.icon, def.dur);
+    const p = this.player.pos;
+    if (id === 'love') this.particles.hearts(p.x, p.y + 1.6, p.z, 5);
+    else if (id === 'dance') this.particles.notes(p.x, p.y + 1.8, p.z, 4);
+    else if (id === 'jump' || id === 'clap' || id === 'thumbs') this.particles.sparkle(p.x, p.y + 1.4, p.z, 0xfff0a0, 8);
+    audio.play(id === 'sad' || id === 'angry' ? 'pop' : 'sparkle');
+    this.net.sendEmote(id);
+  }
+
+  private netMe(): Me {
+    const st = this.ctx?.state;
+    return {
+      name: st?.player.name || 'Joueur',
+      farm: st?.player.farmName || '',
+      look: st?.player.look ?? DEFAULT_LOOK,
+      region: this.title ? '' : this.world?.region ?? '',
+      x: this.player?.pos.x ?? 0,
+      z: this.player?.pos.z ?? 0,
+      facing: this.player?.facing ?? 0,
+      moving: this.moveSpeed,
+      riding: !!st?.player.riding,
+    };
+  }
+
+  /** Chat for local multiplayer (also works alone, as a notepad bubble). */
+  say(text: string): void {
+    this.net.say(text);
+  }
+
+  showEmoteBubble(icon: string, dur = 2.2): void {
+    this.emoteBubble?.removeFromParent();
+    this.emoteBubble = emojiSprite(icon, 0.7);
+    this.emoteBubbleT = Math.min(3, dur);
+    this.renderer.scene.add(this.emoteBubble);
+  }
+
+  private updateEmoteBubble(dt: number): void {
+    if (!this.emoteBubble) return;
+    this.emoteBubbleT -= dt;
+    const p = this.player.pos;
+    this.emoteBubble.position.set(p.x, p.y + 2.05 + Math.sin(this.elapsed * 4) * 0.05, p.z);
+    this.emoteBubble.visible = this.rig.view !== 'fp';
+    if (this.emoteBubbleT <= 0) { this.emoteBubble.removeFromParent(); this.emoteBubble = null; }
+  }
+
+  // ------------------------------------------------------------ ads
+  adsAvailable(): boolean {
+    return ads.available();
+  }
+
+  adsPrivacy(): { required: boolean; show: () => void } {
+    return { required: ads.privacyOptionsRequired(), show: () => ads.showPrivacyOptions() };
+  }
+
+  async watchAd(p: AdPlacement, offer?: Offer): Promise<string | null> {
+    if (!ads.available()) return null;
+    if (!this.ctx.adRewards.can(p)) {
+      this.ui.toast('Plus de récompense de ce type aujourd\'hui — revenez demain !', '📺');
+      return null;
+    }
+    if (!ads.ready('rewarded')) {
+      this.ui.toast('Aucune pub disponible pour le moment, réessayez dans un instant.', '📺');
+      return null;
+    }
+    const ok = await ads.rewarded();
+    if (!ok) {
+      this.ui.toast('Pub interrompue : pas de récompense cette fois.', '📺');
+      return null;
+    }
+    const text = this.ctx.adRewards.grant(p, offer);
+    if (text) {
+      audio.play('gem');
+      this.ui.toast(`Merci ! ${text}`, '🎁', 'good');
+      this.save();
+    }
+    return text;
+  }
+
+  // ------------------------------------------------------------ camera & first person
+  get view(): 'iso' | 'fp' {
+    return this.rig.view;
+  }
+
+  rotateCamera(d: number): void {
+    this.rig.rotate(d);
+  }
+
+  toggleView(): void {
+    this.settings.view = this.rig.view === 'fp' ? 'iso' : 'fp';
+    this.saveSettings();
+    this.applyView(this.settings.view);
+    audio.play('click');
+    if (this.settings.view === 'fp') this.ui.tip('fp_view', '👁️', 'Vue à la première personne', 'Pouce gauche sur le joystick pour marcher, autre doigt à droite de l\'écran pour regarder autour — en même temps. Le joystick avance dans la direction du regard ; visez un objet avec le point au centre et touchez le gros bouton. Le bouton 👁️ en haut à droite ramène la vue d\'ensemble.');
+  }
+
+  private applyView(v: 'iso' | 'fp'): void {
+    const fp = v === 'fp' && !this.title;
+    if (fp && this.rig.view !== 'fp') {
+      // look where the avatar faces
+      this.rig.yawTarget = this.rig.yaw = this.player.facing + Math.PI;
+      this.rig.fpPitch = -0.12;
+    }
+    this.rig.setView(fp ? 'fp' : 'iso');
+    this.world?.house?.setFirstPerson(fp);
+    this.renderer.setTiltShift(fp ? 0 : 1);
+    globalUniforms.uSeeThrough.value = fp ? 0 : 1;
+    if (this.player) {
+      this.player.lockFacing = null;
+      this.player.rig.root.visible = !fp;
+      if (this.player.horse) this.player.horse.root.visible = !fp;
+    }
+    this.ui.root.classList.toggle('fp-view', fp);
+    this.input.noPinch = fp;
+  }
+
+  private leaveFpForPlacement(): void {
+    if (this.rig.view === 'fp' && !this.viewBeforePlacement) {
+      this.viewBeforePlacement = 'fp';
+      this.applyView('iso');
+    }
   }
 
   previewLook(look: Appearance | null): void {

@@ -83,7 +83,7 @@ export class SkyRig {
     this.sun.shadow.bias = -0.0008;
     this.sun.shadow.normalBias = 0.03;
     const cam = this.sun.shadow.camera as THREE.OrthographicCamera;
-    cam.left = -16; cam.right = 16; cam.top = 16; cam.bottom = -16; cam.near = 1; cam.far = 70;
+    cam.left = -22; cam.right = 22; cam.top = 22; cam.bottom = -22; cam.near = 1; cam.far = 90;
     this.hemi = new THREE.HemisphereLight(0xdff2ff, 0x9ab87a, 1);
     this.ambient = new THREE.AmbientLight(0xffffff, 0.35);
     this.group.add(this.sun, this.sun.target, this.hemi, this.ambient);
@@ -103,12 +103,30 @@ export class SkyRig {
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           float a=hash(vec3(i,0.)), b=hash(vec3(i+vec2(1,0),0.)), c=hash(vec3(i+vec2(0,1),0.)), d=hash(vec3(i+vec2(1,1),0.));
           return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
-        float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; } return s; }
+        float fbmR(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; } return s; }
+        float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += noise(p) * a; p = p * 2.03 + 11.7; a *= 0.5; } return v; }
         void main(){
           vec3 d = normalize(vDir);
+          vec3 sd = normalize(uSunDir);
+          float sg = max(0.0, dot(d, sd));
           vec3 col;
-          if (d.y > 0.0) col = mix(uHorizon, uZenith, pow(d.y, 0.6));
-          else {
+          if (d.y > 0.0) {
+            col = mix(uHorizon, uZenith, pow(d.y, 0.55));
+            // warm scattering around the sun near the horizon
+            col += uHorizon * pow(sg, 6.0) * 0.35 * (1.0 - uNight) * (1.0 - smoothstep(0.0, 0.6, d.y));
+            // painted cumulus: soft lit tops, shaded bellies, drifting with the wind
+            vec2 cuv = d.xz / (d.y + 0.18) * 1.6 + vec2(uTime * 0.012, uTime * 0.005);
+            float n = fbm(cuv);
+            float cover = mix(0.56, 0.38, uOvercast);
+            float cl = smoothstep(cover, cover + 0.2, n) * smoothstep(0.0, 0.12, d.y);
+            float shade = fbm(cuv + sd.xz * 0.35);
+            vec3 lit = mix(vec3(1.0, 0.98, 0.95), uHorizon * 1.15, 0.25);
+            vec3 belly = mix(uZenith, uHorizon, 0.5) * 0.85;
+            vec3 cloudCol = mix(lit, belly, smoothstep(0.35, 0.8, shade) * 0.8);
+            cloudCol += vec3(1.0, 0.85, 0.6) * pow(sg, 8.0) * 0.6 * (1.0 - uNight);
+            cloudCol *= mix(1.0, 0.32, uNight);
+            col = mix(col, cloudCol, cl * 0.9);
+          } else {
             col = mix(uHorizon, uBelow, smoothstep(0.0, 0.35, -d.y));
             // sea of clouds under the floating world
             vec2 uv = d.xz / max(0.15, -d.y) * 1.2;
@@ -118,12 +136,15 @@ export class SkyRig {
             col = mix(col, cloudCol, cl * smoothstep(0.02, 0.25, -d.y) * 0.85);
           }
           // stars (everywhere: we float in the sky)
-          vec3 sd = floor(d * 140.0);
-          float s = step(0.9965, hash(sd)) * (0.6 + 0.4 * sin(uTime * 2.0 + hash(sd + 3.0) * 30.0));
+          vec3 sc = floor(d * 140.0);
+          float s = step(0.9965, hash(sc)) * (0.6 + 0.4 * sin(uTime * 2.0 + hash(sc + 3.0) * 30.0));
           col += vec3(s) * uNight * (1.0 - uOvercast);
-          // sun / moon glow
-          float sg = max(0.0, dot(d, normalize(uSunDir)));
-          col += vec3(1.0, 0.9, 0.7) * pow(sg, 48.0) * (1.0 - uNight) * 0.8;
+          // sun disc + halo by day, moon disc by night
+          float day = 1.0 - uNight;
+          col += vec3(1.0, 0.9, 0.7) * pow(sg, 48.0) * day * 0.8;
+          col += vec3(1.0, 0.97, 0.88) * smoothstep(0.9993, 0.9997, sg) * day * (1.0 - uOvercast * 0.8) * 1.6;
+          col += vec3(0.85, 0.9, 1.0) * smoothstep(0.9994, 0.9997, sg) * uNight * 0.9;
+          col += vec3(0.5, 0.6, 0.9) * pow(sg, 90.0) * uNight * 0.35;
           // aurora (Frosty Peaks)
           if (uAurora > 0.0) {
             float a = sin(d.x * 6.0 + uTime * 0.4) * 0.5 + 0.5;
@@ -134,25 +155,24 @@ export class SkyRig {
           if (uReal > 0.5) {
             vec3 sdir = normalize(uSunDir);
             float mu = dot(d, sdir);
-            float day = 1.0 - uNight;
+            float dayR = 1.0 - uNight;
             // Rayleigh-ish brightening near the horizon + Henyey-Greenstein Mie halo
-            float hz = 1.0 - abs(d.y);
-            col *= 1.0 + pow(hz, 6.0) * 0.35 * day;
+            col *= 1.0 + pow(1.0 - abs(d.y), 6.0) * 0.35 * dayR;
             float g = 0.82;
             float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) / 12.566;
             vec3 sunTint = mix(vec3(1.0, 0.55, 0.25), vec3(1.0, 0.95, 0.85), smoothstep(0.0, 0.5, sdir.y));
-            col += sunTint * hg * 1.6 * day * (1.0 - uOvercast * 0.7);
+            col += sunTint * hg * 1.6 * dayR * (1.0 - uOvercast * 0.7);
             // HDR sun disk (feeds bloom + light shafts); a cool moon at night
             float disk = smoothstep(0.9994, 0.9998, mu);
-            col += mix(sunTint * 40.0 * day, vec3(0.8, 0.85, 1.0) * 6.0, uNight) * disk * (1.0 - uOvercast * 0.9);
-            // volumetric-looking cumulus layer above the island
+            col += mix(sunTint * 40.0 * dayR, vec3(0.8, 0.85, 1.0) * 6.0, uNight) * disk * (1.0 - uOvercast * 0.9);
+            // volumetric-looking cumulus layer
             if (d.y > 0.02) {
               vec2 cuv = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.012, uTime * 0.006);
-              float cn = fbm(cuv);
+              float cn = fbmR(cuv);
               float cover = mix(0.52, 0.32, uOvercast);
               float cd = smoothstep(cover, cover + 0.28, cn);
-              float lit = clamp(fbm(cuv + sdir.xz * 0.08) - cn + 0.55, 0.0, 1.0);
-              vec3 cloudLit = mix(uHorizon * 0.65, vec3(1.0) * mix(1.0, 0.25, uNight), lit) + sunTint * hg * 0.6 * day;
+              float lit = clamp(fbmR(cuv + sdir.xz * 0.08) - cn + 0.55, 0.0, 1.0);
+              vec3 cloudLit = mix(uHorizon * 0.65, vec3(1.0) * mix(1.0, 0.25, uNight), lit) + sunTint * hg * 0.6 * dayR;
               col = mix(col, cloudLit, cd * smoothstep(0.02, 0.2, d.y) * 0.9);
             }
             col *= mix(1.2, 1.0, uNight);
@@ -164,6 +184,13 @@ export class SkyRig {
     this.dome.frustumCulled = false;
     this.dome.renderOrder = -100;
     this.group.add(this.dome);
+  }
+
+  /** 0..1: how golden the light is (sunrise / sunset). */
+  warmth(minute: number): number {
+    const m = ((minute % 1440) + 1440) % 1440;
+    const bump = (c: number, w: number) => Math.max(0, 1 - Math.abs(m - c) / w);
+    return Math.min(1, bump(390, 90) * 0.8 + bump(1110, 110));
   }
 
   setShadowSize(size: number): void {
@@ -186,7 +213,7 @@ export class SkyRig {
     const ang = Math.PI * Math.min(1, Math.max(0, dayT));
     const night = k.night > 0.6;
     const real = globalUniforms.uReal.value > 0.5;
-    if (!night && real) st.sunDir.set(Math.cos(ang) * 0.95, 0.32 + Math.sin(ang) * 0.42, -0.62).normalize(); // lower sun -> long, sculpting shadows
+    if (!night && real) st.sunDir.set(Math.cos(ang) * 0.95, 0.32 + Math.sin(ang) * 0.42, -0.62).normalize(); // lower sun: long, sculpting shadows
     else if (!night) st.sunDir.set(Math.cos(ang) * 0.8, Math.max(0.45, Math.sin(ang)), -0.55).normalize();
     else st.sunDir.set(-0.4, 0.8, -0.5).normalize(); // moonlight
     const over = this.overcast;
@@ -224,27 +251,24 @@ export class SkyRig {
       this.ambient.intensity = 0.18 + this.flash;
       st.fog.copy(tc(k.fog)).lerp(new THREE.Color(0xc8ccd4), over * 0.5);
     }
-    if (globalUniforms.uReal.value > 0.5 && this.indoor === 'none') {
-      // physically flavoured rig: strong HDR sun, sky light comes mostly from the IBL
+    if (real && this.indoor === 'none') {
+      // physically flavoured rig: strong HDR sun, sky light mostly from the IBL
       const day = 1 - st.night;
       this.sun.intensity *= 2.2 + 0.25 * day + 0.6 * st.night;
-      this.hemi.intensity *= 2.4 - 2.05 * day;
-      this.ambient.intensity *= 3.0 - 2.7 * day;
+      this.hemi.intensity *= 3.6 - 3.05 * day;
+      this.ambient.intensity *= 4.5 - 4.2 * day;
+      this.hemi.color.lerp(new THREE.Color(0.62, 0.68, 0.85), 0.45 * st.night);
       this.sun.shadow.radius = 3;
-      // warm direct sun vs cool sky fill: the key to a believable daylight
+      // warm direct sun vs cool sky fill
       this.sun.color.lerp(new THREE.Color(1.0, 0.86, 0.68), 0.35 * day * (1 - over));
       this.hemi.color.lerp(new THREE.Color(0.55, 0.72, 1.0), 0.4 * day);
       this.hemi.groundColor.lerp(new THREE.Color(0.42, 0.4, 0.26), 0.5 * day);
-    } else if (globalUniforms.uReal.value > 0.5) {
+    } else if (real) {
       this.sun.intensity *= 1.8;
       this.hemi.intensity *= this.indoor === 'cave' ? 2.4 : 1.5;
       this.ambient.intensity *= 2.5;
     }
-    const dayL = this.indoor === 'none' ? 1 - st.night : 0;
-    globalUniforms.uDay.value = dayL;
-    globalUniforms.uCloudShadow.value = this.indoor === 'none' ? dayL * (0.55 + over * 0.45) * (1 - this.storm * 0.5) : 0;
-    globalUniforms.uSunDir.value.copy(st.sunDir);
-    globalUniforms.uSunColor.value.copy(this.sun.color).multiplyScalar(Math.max(0.15, 1 - st.night * 0.8));
+    globalUniforms.uDay.value = this.indoor === 'none' ? 1 - st.night : 0;
     st.below.copy(tc(k.below));
     this.sun.position.copy(focus).addScaledVector(st.sunDir, 30);
     this.sun.target.position.copy(focus);
@@ -260,6 +284,32 @@ export class SkyRig {
     (u.uSunDir.value as THREE.Vector3).copy(st.sunDir);
     this.dome.position.copy(focus);
     if (scene.fog instanceof THREE.Fog) scene.fog.color.copy(st.fog);
+    // shared lighting uniforms for the painterly materials and the water
+    const gu = globalUniforms;
+    gu.uSunDir.value.copy(st.sunDir);
+    gu.uSunColor.value.copy(this.sun.color);
+    gu.uNight.value = this.indoor === 'house' ? 0 : st.night;
+    (gu.uSkyColor.value as THREE.Color).copy(u.uHorizon.value as THREE.Color);
+    const warm = this.warmth(minute) * (1 - over);
+    if (this.indoor === 'cave') {
+      gu.uRimColor.value.set(0.6, 0.55, 1.0);
+      gu.uRim.value = 0.25;
+      gu.uShadowTint.value.set(0.78, 0.76, 1.0);
+    } else if (this.indoor === 'house') {
+      gu.uRimColor.value.set(1.0, 0.85, 0.65);
+      gu.uRim.value = 0.18;
+      gu.uShadowTint.value.set(0.92, 0.86, 0.9);
+    } else {
+      gu.uRimColor.value.setRGB(1, 0.93, 0.8).lerp(new THREE.Color(1, 0.62, 0.35), warm).lerp(new THREE.Color(0.55, 0.65, 1.0), st.night);
+      gu.uRim.value = (0.3 + warm * 0.4) * (1 - over * 0.5) * (1 - st.night * 0.8);
+      gu.uShadowTint.value.setRGB(0.8, 0.87, 1.06).lerp(new THREE.Color(0.86, 0.74, 0.92), warm).lerp(new THREE.Color(0.85, 0.88, 1.0), st.night);
+    }
+    if (real) {
+      // PBR shading does the shadows/rims physically: tone the painterly tricks down
+      gu.uShadowTint.value.lerp(new THREE.Color(1, 1, 1), 0.7);
+      gu.uRim.value *= 0.35;
+      gu.uSunColor.value.multiplyScalar(Math.max(0.15, 1 - st.night * 0.8));
+    }
     this.flash = Math.max(0, this.flash - 0.05);
   }
 }

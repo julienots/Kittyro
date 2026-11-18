@@ -30,9 +30,7 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
     prev.call(mat, shader, renderer);
     shader.uniforms.uWet = globalUniforms.uWet;
     shader.uniforms.uSunDirW = globalUniforms.uSunDir;
-    shader.uniforms.uTimeR = globalUniforms.uTime;
     shader.uniforms.uDay = globalUniforms.uDay;
-    shader.uniforms.uCloudShadow = globalUniforms.uCloudShadow;
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>
       varying vec3 vRealW;`);
     vs = vs.replace('#include <project_vertex>', `#include <project_vertex>
@@ -44,7 +42,7 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
     shader.vertexShader = vs;
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>
       ${REAL_COMMON}
-      uniform float uWet; uniform vec3 uSunDirW; uniform float uTimeR; uniform float uDay; uniform float uCloudShadow;`);
+      uniform float uWet; uniform vec3 uSunDirW; uniform float uDay;`);
     // albedo variation & grime in crevices (low areas get darker / dirtier)
     fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
       {
@@ -83,15 +81,7 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
         vec3 gv = (viewMatrix * vec4(grad, 0.0)).xyz;
         normal = normalize(normal - (gv - dot(gv, normal) * normal) * ${bump.toFixed(3)} * 0.12);
       }`);
-    // moving cloud shadows sweeping over the land in daylight
     fs = fs.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
-      if (uCloudShadow > 0.001) {
-        vec2 cp = vRealW.xz * 0.035 + vec2(uTimeR * 0.012, uTimeR * 0.007);
-        float cn = rFbm(vec3(cp, 0.5)) + 0.25 * rNoise(vec3(cp * 4.0, 1.5));
-        float cs = smoothstep(0.5, 0.68, cn) * uCloudShadow;
-        reflectedLight.directDiffuse *= 1.0 - cs * 0.6;
-        reflectedLight.directSpecular *= 1.0 - cs * 0.8;
-      }
       ${kind.terrain || kind.foliage ? `
       // sky-light sheen on vegetation at grazing angles (dew / waxy blades)
       {
@@ -119,7 +109,7 @@ export function toRealistic(src: THREE.Material): THREE.Material {
   if (hit) return hit;
   const t = src as THREE.MeshToonMaterial;
   const key = t.customProgramCacheKey ? t.customProgramCacheKey() : '';
-  const foliage = key.startsWith('mm_') && !key.startsWith('mm_0_'); // has wind sway
+  const foliage = key.startsWith('mm_') && (!key.startsWith('mm_0_') || key.endsWith('_true')); // wind sway or leaf flag
   const terrain = !!t.map && t.vertexColors;
   const lum = t.color.r * 0.3 + t.color.g * 0.59 + t.color.b * 0.11;
   const skin = !t.vertexColors && !t.map && lum > 0.55 && t.color.r > t.color.b;
@@ -184,7 +174,7 @@ export class SkyEnvironment {
     this.rt?.dispose();
     this.rt = next;
     scene.environment = next.texture;
-    scene.environmentIntensity = 0.5 + 0.15 * globalUniforms.uDay.value;
+    scene.environmentIntensity = 0.5 + 0.3 * globalUniforms.uDay.value;
   }
 
   dispose(scene: THREE.Scene): void {

@@ -16,5 +16,5 @@ try {
 await page.screenshot({ path: out });
 const info = await page.evaluate(() => window.__info);
 console.log('info:', info);
-console.log(logs.filter((l) => !l.includes("GL Driver")).slice(0, 60).join('\n'));
+console.log(logs.slice(0, 40).join('\n'));
 await browser.close();

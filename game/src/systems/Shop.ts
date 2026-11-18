@@ -126,6 +126,19 @@ export class ShopSystem {
       this.ctx.toast(o.currency === 'coins' ? 'Pas assez de pièces' : o.currency === 'gems' ? 'Pas assez de Moon Gems' : 'Pas assez de jetons', '💸', 'warn');
       return false;
     }
+    this.deliver(o, qty);
+    return true;
+  }
+
+  /** Hand over an offer without paying (rewarded ad unlock). */
+  grantFree(o: Offer): boolean {
+    if (o.locked || o.owned || o.kind === 'animal' || o.kind === 'backpack') return false;
+    this.deliver(o, 1);
+    return true;
+  }
+
+  private deliver(o: Offer, qty: number): void {
+    const st = this.ctx.state;
     switch (o.kind) {
       case 'item': this.ctx.inventory.add(o.id, qty, true); break;
       case 'decor': this.ctx.inventory.add(o.id, qty, true); break;
@@ -139,7 +152,6 @@ export class ShopSystem {
       }
     }
     this.ctx.bus.emit('bought', { key: o.key, qty });
-    return true;
   }
 
   // ---- Cozy Pass ----

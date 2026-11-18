@@ -1,0 +1,42 @@
+# Checks the custom 3D models uploaded to game/models/ and builds a playable web version.
+# Upload a .glb with "Add file → Upload files" in game/models/override or game/models/world:
+# this workflow runs automatically; download the "mossy-meadows-web" artifact to play it.
+name: Modèles 3D
+
+on:
+  push:
+    paths:
+      - 'game/models/**'
+  pull_request:
+    paths:
+      - 'game/models/**'
+  workflow_dispatch:
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Vérifier les modèles
+        working-directory: game
+        run: node tools/check-models.mjs
+
+      - name: Construire le jeu
+        working-directory: game
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mossy-meadows-web
+          path: game/dist/index.html
+          retention-days: 14

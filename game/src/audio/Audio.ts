@@ -115,6 +115,13 @@ export class AudioEngine {
     });
   }
 
+  /** Silence everything while a full-screen ad plays. */
+  setMuted(m: boolean): void {
+    if (!this.ctx) return;
+    if (m) this.ctx.suspend();
+    else if (!document.hidden) this.ctx.resume();
+  }
+
   applyVolumes(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
@@ -512,6 +519,15 @@ export class AudioEngine {
       case 'cat': formant(500, 700, 0.35, 'sine', 0.08); this.tone(650, 0.2, 'sine', 0.05 * v, undefined, 400, 0.3); break;
       case 'dog': this.noise(0.08, 700, 'bandpass', 0.25 * v, 0, 2); formant(320, 260, 0.12, 'sawtooth', 0.08, 0, 1000); break;
       case 'rabbit': case 'otter': case 'hedgehog': this.tone(1800, 0.06, 'sine', 0.05 * v, undefined, 2200); break;
+      case 'goose': formant(560, 470, 0.22, 'sawtooth', 0.09, 0, 1800); formant(560, 470, 0.22, 'square', 0.03, 0, 1200); break;
+      case 'turkey': for (let i = 0; i < 4; i++) this.tone(520 - i * 30, 0.06, 'square', 0.035 * v, undefined, 700, i * 0.07); break;
+      case 'alpaca': formant(240, 300, 0.5, 'sine', 0.08, 6, 900); break;
+      case 'donkey': formant(700, 350, 0.35, 'sawtooth', 0.07, 9, 1700); formant(260, 200, 0.45, 'sawtooth', 0.06, 0, 900); break;
+      case 'squirrel': for (let i = 0; i < 4; i++) this.tone(2200 + i * 100, 0.03, 'square', 0.025 * v, undefined, 3000, i * 0.05); break;
+      case 'owl': this.tone(420, 0.25, 'sine', 0.07 * v, undefined, 600); this.tone(380, 0.35, 'sine', 0.07 * v, undefined, 500, 0.32); break;
+      case 'frog': this.noise(0.12, 300, 'bandpass', 0.2 * v, 0, 4); formant(180, 140, 0.15, 'square', 0.05, 40, 500); break;
+      case 'penguin': formant(700, 520, 0.2, 'sawtooth', 0.06, 18, 2000); break;
+      case 'crab': for (let i = 0; i < 3; i++) this.noise(0.03, 3000, 'highpass', 0.08 * v, i * 0.06); break;
       default: this.tone(1300, 0.4, 'sine', 0.06 * v, undefined, 1700);
     }
   }
