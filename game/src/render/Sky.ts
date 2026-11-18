@@ -67,7 +67,7 @@ export class SkyRig {
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   readonly ambient: THREE.AmbientLight;
-  private dome: THREE.Mesh;
+  readonly dome: THREE.Mesh;
   private domeMat: THREE.ShaderMaterial;
   state: LightState = { night: 0, sunDir: new THREE.Vector3(), fog: new THREE.Color(), below: new THREE.Color() };
   overcast = 0; // 0..1 from weather
@@ -93,16 +93,17 @@ export class SkyRig {
       depthWrite: false,
       uniforms: {
         uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uBelow: { value: new THREE.Color() },
-        uNight: { value: 0 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uAurora: { value: 0 }, uOvercast: { value: 0 },
+        uNight: { value: 0 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uAurora: { value: 0 }, uOvercast: { value: 0 }, uReal: globalUniforms.uReal,
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
       fragmentShader: `
-        uniform vec3 uZenith, uHorizon, uBelow; uniform float uNight, uTime, uAurora, uOvercast; uniform vec3 uSunDir;
+        uniform vec3 uZenith, uHorizon, uBelow; uniform float uNight, uTime, uAurora, uOvercast, uReal; uniform vec3 uSunDir;
         varying vec3 vDir;
         float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
           float a=hash(vec3(i,0.)), b=hash(vec3(i+vec2(1,0),0.)), c=hash(vec3(i+vec2(0,1),0.)), d=hash(vec3(i+vec2(1,1),0.));
           return mix(mix(a,b,f.x), mix(c,d,f.x), f.y); }
+        float fbmR(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; } return s; }
         float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += noise(p) * a; p = p * 2.03 + 11.7; a *= 0.5; } return v; }
         void main(){
           vec3 d = normalize(vDir);
@@ -151,6 +152,31 @@ export class SkyRig {
             col += mix(vec3(0.2, 1.0, 0.6), vec3(0.6, 0.3, 1.0), a) * band * uAurora * 0.5 * noise(vec2(d.x * 8.0 + uTime * 0.2, d.z * 3.0));
           }
           col = mix(col, vec3(dot(col, vec3(0.33))), uOvercast * 0.45);
+          if (uReal > 0.5) {
+            vec3 sdir = normalize(uSunDir);
+            float mu = dot(d, sdir);
+            float dayR = 1.0 - uNight;
+            // Rayleigh-ish brightening near the horizon + Henyey-Greenstein Mie halo
+            col *= 1.0 + pow(1.0 - abs(d.y), 6.0) * 0.35 * dayR;
+            float g = 0.82;
+            float hg = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5) / 12.566;
+            vec3 sunTint = mix(vec3(1.0, 0.55, 0.25), vec3(1.0, 0.95, 0.85), smoothstep(0.0, 0.5, sdir.y));
+            col += sunTint * hg * 1.6 * dayR * (1.0 - uOvercast * 0.7);
+            // HDR sun disk (feeds bloom + light shafts); a cool moon at night
+            float disk = smoothstep(0.9994, 0.9998, mu);
+            col += mix(sunTint * 40.0 * dayR, vec3(0.8, 0.85, 1.0) * 6.0, uNight) * disk * (1.0 - uOvercast * 0.9);
+            // volumetric-looking cumulus layer
+            if (d.y > 0.02) {
+              vec2 cuv = d.xz / (d.y + 0.12) * 1.6 + vec2(uTime * 0.012, uTime * 0.006);
+              float cn = fbmR(cuv);
+              float cover = mix(0.52, 0.32, uOvercast);
+              float cd = smoothstep(cover, cover + 0.28, cn);
+              float lit = clamp(fbmR(cuv + sdir.xz * 0.08) - cn + 0.55, 0.0, 1.0);
+              vec3 cloudLit = mix(uHorizon * 0.65, vec3(1.0) * mix(1.0, 0.25, uNight), lit) + sunTint * hg * 0.6 * dayR;
+              col = mix(col, cloudLit, cd * smoothstep(0.02, 0.2, d.y) * 0.9);
+            }
+            col *= mix(1.2, 1.0, uNight);
+          }
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -186,7 +212,9 @@ export class SkyRig {
     const dayT = ((minute % 1440) - 360) / (1200 - 360);
     const ang = Math.PI * Math.min(1, Math.max(0, dayT));
     const night = k.night > 0.6;
-    if (!night) st.sunDir.set(Math.cos(ang) * 0.8, Math.max(0.45, Math.sin(ang)), -0.55).normalize();
+    const real = globalUniforms.uReal.value > 0.5;
+    if (!night && real) st.sunDir.set(Math.cos(ang) * 0.95, 0.32 + Math.sin(ang) * 0.42, -0.62).normalize(); // lower sun: long, sculpting shadows
+    else if (!night) st.sunDir.set(Math.cos(ang) * 0.8, Math.max(0.45, Math.sin(ang)), -0.55).normalize();
     else st.sunDir.set(-0.4, 0.8, -0.5).normalize(); // moonlight
     const over = this.overcast;
     const dim = 1 - over * 0.45 - this.storm * 0.2;
@@ -223,6 +251,24 @@ export class SkyRig {
       this.ambient.intensity = 0.18 + this.flash;
       st.fog.copy(tc(k.fog)).lerp(new THREE.Color(0xc8ccd4), over * 0.5);
     }
+    if (real && this.indoor === 'none') {
+      // physically flavoured rig: strong HDR sun, sky light mostly from the IBL
+      const day = 1 - st.night;
+      this.sun.intensity *= 2.2 + 0.25 * day + 0.6 * st.night;
+      this.hemi.intensity *= 3.6 - 3.05 * day;
+      this.ambient.intensity *= 4.5 - 4.2 * day;
+      this.hemi.color.lerp(new THREE.Color(0.62, 0.68, 0.85), 0.45 * st.night);
+      this.sun.shadow.radius = 3;
+      // warm direct sun vs cool sky fill
+      this.sun.color.lerp(new THREE.Color(1.0, 0.86, 0.68), 0.35 * day * (1 - over));
+      this.hemi.color.lerp(new THREE.Color(0.55, 0.72, 1.0), 0.4 * day);
+      this.hemi.groundColor.lerp(new THREE.Color(0.42, 0.4, 0.26), 0.5 * day);
+    } else if (real) {
+      this.sun.intensity *= 1.8;
+      this.hemi.intensity *= this.indoor === 'cave' ? 2.4 : 1.5;
+      this.ambient.intensity *= 2.5;
+    }
+    globalUniforms.uDay.value = this.indoor === 'none' ? 1 - st.night : 0;
     st.below.copy(tc(k.below));
     this.sun.position.copy(focus).addScaledVector(st.sunDir, 30);
     this.sun.target.position.copy(focus);
@@ -257,6 +303,12 @@ export class SkyRig {
       gu.uRimColor.value.setRGB(1, 0.93, 0.8).lerp(new THREE.Color(1, 0.62, 0.35), warm).lerp(new THREE.Color(0.55, 0.65, 1.0), st.night);
       gu.uRim.value = (0.3 + warm * 0.4) * (1 - over * 0.5) * (1 - st.night * 0.8);
       gu.uShadowTint.value.setRGB(0.8, 0.87, 1.06).lerp(new THREE.Color(0.86, 0.74, 0.92), warm).lerp(new THREE.Color(0.85, 0.88, 1.0), st.night);
+    }
+    if (real) {
+      // PBR shading does the shadows/rims physically: tone the painterly tricks down
+      gu.uShadowTint.value.lerp(new THREE.Color(1, 1, 1), 0.7);
+      gu.uRim.value *= 0.35;
+      gu.uSunColor.value.multiplyScalar(Math.max(0.15, 1 - st.night * 0.8));
     }
     this.flash = Math.max(0, this.flash - 0.05);
   }

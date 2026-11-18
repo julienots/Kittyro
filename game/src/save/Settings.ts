@@ -1,4 +1,4 @@
-export type Quality = 'low' | 'medium' | 'high' | 'ultra';
+export type Quality = 'low' | 'medium' | 'high' | 'ultra' | 'realistic';
 export type ControlMode = 'joystick' | 'tap' | 'both';
 
 export interface Settings {
@@ -31,9 +31,9 @@ export function detectQuality(): Quality {
   const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
   const cores = navigator.hardwareConcurrency ?? 4;
   const mem = (navigator as any).deviceMemory ?? 4;
-  if (!mobile) return cores >= 8 ? 'high' : 'medium';
+  if (!mobile) return cores >= 8 ? 'realistic' : 'medium';
   if (mem <= 2 || cores <= 4) return 'low';
-  if (mem >= 8 && cores >= 8) return 'high';
+  if (mem >= 8 && cores >= 8) return 'realistic';
   return 'medium';
 }
 

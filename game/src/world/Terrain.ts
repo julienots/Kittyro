@@ -280,7 +280,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
       }`,
     fragmentShader: `
       uniform vec3 uColor; uniform vec3 uDeep; uniform float uTime; uniform float uFrozen;
-      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform float uNight;
+      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform float uNight; uniform float uReal;
       varying float vShore; varying vec3 vW;
       #include <fog_pars_fragment>
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
@@ -312,7 +312,8 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
         // sun / moon glint (feeds the bloom)
         vec3 H = normalize(normalize(uSunDir) + V);
         float spec = pow(max(dot(N, H), 0.0), 320.0);
-        col += uSunColor * spec * mix(1.5, 0.7, uNight);
+        col += uSunColor * spec * mix(1.5, 0.7, uNight) * (1.0 + uReal * 5.0); // HDR glint feeds bloom + shafts
+        col += uSunColor * pow(max(dot(N, H), 0.0), 90.0) * 0.05 * uReal * (1.0 - uNight);
         // stylised sparkles
         float sp = step(0.988, hash(floor(vW.xz*6.0) + floor(uTime*2.0))) * step(0.2, h0);
         col += sp * 0.45 * (1.0 - uNight * 0.7);
@@ -331,6 +332,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
   m.uniforms.uSunColor = globalUniforms.uSunColor;
   m.uniforms.uSkyColor = globalUniforms.uSkyColor;
   m.uniforms.uNight = globalUniforms.uNight;
+  m.uniforms.uReal = globalUniforms.uReal;
   return m;
 }
 
@@ -346,18 +348,20 @@ export function lavaMaterial(): THREE.ShaderMaterial {
         #include <fog_vertex>
       }`,
     fragmentShader: `
-      varying vec3 vW; uniform float uTime;
+      varying vec3 vW; uniform float uTime; uniform float uReal;
       #include <fog_pars_fragment>
       void main(){
         float n = sin(vW.x*1.7 + uTime*0.6) * sin(vW.z*1.3 - uTime*0.5) + sin((vW.x+vW.z)*3.1 + uTime*1.4)*0.4;
         vec3 hot = vec3(1.0, 0.75, 0.25), mid = vec3(1.0, 0.35, 0.08), crust = vec3(0.35, 0.08, 0.05);
         vec3 col = mix(mid, hot, smoothstep(0.2, 0.9, n));
         col = mix(col, crust, smoothstep(-0.5, -0.9, n));
+        col *= mix(1.0, 3.5, uReal * smoothstep(0.0, 0.9, n));
         gl_FragColor = vec4(col, 1.0);
         #include <fog_fragment>
       }`,
   });
   m.uniforms.uTime = globalUniforms.uTime;
+  m.uniforms.uReal = globalUniforms.uReal;
   return m;
 }
 

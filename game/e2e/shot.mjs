@@ -2,7 +2,7 @@
 import { chromium } from 'playwright-core';
 const [url, out, frames = '30', w = '1280', h = '720'] = process.argv.slice(2);
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: '/opt/pw-browsers/chromium',
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: +w, height: +h } });

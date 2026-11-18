@@ -1,7 +1,7 @@
 // Visual check: node e2e/look.mjs <url> <outPrefix> <js-to-run-after-start> [w h]
 import { chromium } from 'playwright-core';
 const [url = 'http://localhost:5173/', out = 'e2e/out/look', script = '', w = '1280', hgt = '720'] = process.argv.slice(2);
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: +w, height: +hgt } });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });

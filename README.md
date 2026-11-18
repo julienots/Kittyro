@@ -8,21 +8,39 @@ sans pression, **sans romance**.
 
 ![icône](docs/icon-512.png)
 
+## Graphismes « Réaliste » (1.7)
+
+Nouvelle qualité graphique **Réaliste** (Menu ⚙️ → Qualité graphique), activée par défaut sur
+les appareils puissants :
+
+- matériaux physiques (PBR) avec micro-relief, variations d'albédo et de rugosité procédurales,
+  herbe aux teintes naturelles avec plaques sèches, surfaces mouillées sous la pluie,
+  translucidité du feuillage à contre-jour
+- éclairage HDR : soleil bas et chaud aux ombres longues, lumière de ciel bleutée,
+  éclairage d'environnement (IBL) recapturé depuis le ciel, ombres 4096 px
+- ciel atmosphérique : halo de Mie, disque solaire HDR, nuages volumétriques
+- eau et lave HDR (reflets du soleil qui alimentent le bloom)
+- post-traitement cinéma : SSAO, rayons de soleil volumétriques, bloom, profondeur de champ
+  bokeh, aberration chromatique, tone mapping ACES, étalonnage, vignettage, grain
+
+Code : `game/src/render/Realism.ts` (matériaux) et `game/src/render/Cinematic.ts` (pipeline).
+Dépendances à jour : three 0.187, Vite 8.3, TypeScript 7, Vitest 5.1.
+
 ## Télécharger / installer
 
 Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.6.0-debug.apk` | **APK de test 1.6.0** (Hautes Terres, nage, saut, nouveaux shaders, modèles 3D) |
+| `mossy-meadows-1.7.0-debug.apk` | **APK de test 1.7.0** (graphismes « Réaliste » + tout le contenu 1.6) |
 | `mossy-meadows-1.5.0-release.apk` | APK release signé (1.5.0) |
 | `mossy-meadows-1.5.0-release.aab` | Android App Bundle pour le Play Store (1.5.0) |
 
-> La version **release 1.6.0** doit être signée avec votre clé d'upload (non versionnée) :
+> La version **release 1.7.0** doit être signée avec votre clé d'upload (non versionnée) :
 > `./android/build.sh` en local avec `android/release.jks`, ou l'action GitHub « Android release ».
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.6.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.7.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 

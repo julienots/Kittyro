@@ -4,7 +4,7 @@ import { chromium } from 'playwright-core';
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const out = 'e2e/out';
 const [W, H] = (process.argv[3] ?? '1280x720').split('x').map(Number);
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, hasTouch: W < H });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('404')) logs.push(`[${m.type()}] ${m.text()}`); });

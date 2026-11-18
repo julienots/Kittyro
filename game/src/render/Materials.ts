@@ -29,6 +29,10 @@ export const globalUniforms = {
   uShadowTint: { value: new THREE.Color(0.82, 0.88, 1.05) },
   uNight: { value: 0 },
   uSkyColor: { value: new THREE.Color(0.8, 0.9, 1) },
+  /** 1 when the RÉALISTE (PBR + cinematic) tier is active */
+  uReal: { value: 0 },
+  /** outdoor daylight 0..1 (0 indoors) */
+  uDay: { value: 1 },
 };
 
 let gradientMap: THREE.DataTexture | null = null;

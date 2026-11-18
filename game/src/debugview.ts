@@ -25,6 +25,7 @@ export function debugBoot(): void {
   const ctx = new Ctx(st);
   const sky = new SkyRig();
   r.scene.add(sky.group);
+  r.skyDome = sky.dome;
   const parts = new Particles();
   r.scene.add(parts.group);
   const world = new World(ctx, parts, () => r.profile.grass, () => r.profile.lights);
@@ -62,6 +63,8 @@ export function debugBoot(): void {
     rig.updateSeeThrough(p);
     world.update(1 / 60, t, sky.state.night, p, r.camera);
     parts.update(1 / 60);
+    if (r.cine) { r.cine.haze.copy(sky.state.fog); r.cine.night = sky.state.night; }
+    r.grade.night = sky.state.night;
     r.render();
     (window as any).__frames = ((window as any).__frames ?? 0) + 1;
     (window as any).__info = r.info();
