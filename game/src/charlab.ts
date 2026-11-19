@@ -50,7 +50,8 @@ export function charLab(): void {
   });
   const cam = new THREE.PerspectiveCamera(face ? 22 : 30, window.innerWidth / window.innerHeight, 0.1, 100);
   const rows = Math.ceil(looks.length / cols);
-  if (face && params.has('one')) { cam.fov = 14; cam.updateProjectionMatrix(); cam.position.set(0, 1.15, 6.5); cam.lookAt(0, 1.1, 0); }
+  if (params.has('close')) { cam.fov = 18; cam.updateProjectionMatrix(); cam.position.set(0, 0.75, 7); cam.lookAt(0, 0.68, 0); }
+  else if (face && params.has('one')) { cam.fov = 14; cam.updateProjectionMatrix(); cam.position.set(0, 1.15, 6.5); cam.lookAt(0, 1.1, 0); }
   else if (face) { cam.position.set(0, 1.1 - (rows - 1) * 0.375, 9.5); cam.lookAt(0, 1.12 - (rows - 1) * 0.375, 0); }
   else { cam.position.set(0, 0.4 - (rows - 1) * 0.75, 10.5); cam.lookAt(0, 0.65 - (rows - 1) * 0.78, 0); }
   const loop = () => { r.render(scene, cam); (window as any).__frames = ((window as any).__frames ?? 0) + 1; requestAnimationFrame(loop); };

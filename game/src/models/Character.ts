@@ -641,14 +641,14 @@ export function buildCharacter(look: Appearance, opts: { outline?: boolean; scal
     const foreCol = longSleeve ? sleeveCol : skin;
     const elbow: Vec3 = [side * 0.035, -0.21, 0.0];
     const wrist: Vec3 = [side * 0.045, -0.405, 0.035];
-    ab.limb([side * 0.012, -0.01, 0], elbow, 0.048, 0.042, upperCol, 10);
-    if (!longSleeve && look.top !== 'tank') ab.limb([side * 0.01, -0.02, 0], [side * 0.03, -0.12, 0], 0.056, 0.054, sleeveCol, 10, false); // short sleeve
-    ab.limb(elbow, wrist, 0.041, 0.034, foreCol, 10);
-    if (longSleeve) ab.torus(0.035, 0.008, darker(sleeveCol, 0.85), { pos: [wrist[0], wrist[1] + 0.01, wrist[2]], rot: [Math.PI / 2, 0, 0] });
+    ab.sphere(0.06, upperCol, { pos: [side * 0.006, -0.01, 0] }, 12); // round shoulder
+    ab.limb([side * 0.012, -0.01, 0], elbow, 0.06, 0.054, upperCol, 12);
+    if (!longSleeve && look.top !== 'tank') ab.limb([side * 0.01, -0.02, 0], [side * 0.03, -0.12, 0], 0.068, 0.066, sleeveCol, 12, false); // short sleeve
+    ab.limb(elbow, wrist, 0.054, 0.047, foreCol, 12);
+    if (longSleeve) ab.torus(0.047, 0.01, darker(sleeveCol, 0.85), { pos: [wrist[0], wrist[1] + 0.01, wrist[2]], rot: [Math.PI / 2, 0, 0] });
     // hand: palm, fingers, thumb
-    ab.sphere(0.04, skin, { pos: [side * 0.048, -0.44, 0.04], scale: [0.72, 1, 0.92] }, 10);
-    ab.sphere(0.03, skin, { pos: [side * 0.048, -0.475, 0.05], scale: [0.75, 1, 0.85] }, 8);
-    ab.limb([side * 0.032, -0.425, 0.068], [side * 0.03, -0.455, 0.088], 0.012, 0.01, skin, 6);
+    ab.sphere(0.054, skin, { pos: [side * 0.048, -0.45, 0.04], scale: [0.85, 1, 0.95] }, 12);
+    ab.limb([side * 0.03, -0.43, 0.075], [side * 0.026, -0.462, 0.095], 0.019, 0.016, skin, 8); // thumb
     const m = ab.mesh(mat);
     g.add(m);
     return g;
@@ -663,21 +663,21 @@ export function buildCharacter(look: Appearance, opts: { outline?: boolean; scal
   const shoeCol = look.shoesColor;
   const mkLeg = (side: number) => {
     const g = new THREE.Group();
-    g.position.set(side * 0.082, HIP_Y, 0);
+    g.position.set(side * 0.086, HIP_Y, 0);
     const lb = mb();
     const bare = look.bottom === 'skirt' || dressLike;
     const thighCol = bare ? skin : bottomCol;
     const shinCol = bare || look.bottom === 'shorts' ? skin : bottomCol;
-    lb.limb([0, 0.02, 0], [0, -0.21, 0.01], 0.064, 0.05, thighCol, 10);
-    lb.limb([0, -0.21, 0.01], [0, -0.42, -0.005], 0.05, 0.04, shinCol, 10);
-    if (look.bottom === 'shorts' && !dressLike) lb.limb([0, 0.0, 0], [0, -0.12, 0.005], 0.07, 0.066, bottomCol, 10);
+    lb.limb([0, 0.02, 0], [0, -0.21, 0.01], 0.078, 0.068, thighCol, 12);
+    lb.limb([0, -0.21, 0.01], [0, -0.42, -0.005], 0.066, 0.058, shinCol, 12);
+    if (look.bottom === 'shorts' && !dressLike) lb.limb([0, 0.0, 0], [0, -0.12, 0.005], 0.085, 0.08, bottomCol, 12);
     if (look.bottom === 'cargo' && !dressLike) for (const sx of [-1, 1]) lb.box(0.02, 0.07, 0.06, darker(bottomCol, 0.85), { pos: [side * 0.062 * (sx > 0 ? 1 : 1), -0.16, 0.005] });
-    if (!bare && look.bottom !== 'shorts') lb.torus(0.042, 0.008, darker(bottomCol, 0.8), { pos: [0, -0.4, 0], rot: [Math.PI / 2, 0, 0] });
+    if (!bare && look.bottom !== 'shorts') lb.torus(0.058, 0.009, darker(bottomCol, 0.8), { pos: [0, -0.4, 0], rot: [Math.PI / 2, 0, 0] });
     // shoe
     const boot = look.shoes === 'boots' || look.shoes === 'rainboots';
-    if (boot) lb.cyl(0.047, 0.05, 0.12, shoeCol, { pos: [0, -0.42, 0.0] }, 10);
-    lb.sphere(0.055, shoeCol, { pos: [0, -0.455, 0.035], scale: [0.95, 0.62, 1.55] }, 12);
-    lb.box(0.1, 0.022, 0.19, look.shoes === 'sneakers' ? 0xffffff : darker(shoeCol, 0.6), { pos: [0, -0.49, 0.035] });
+    if (boot) lb.cyl(0.064, 0.068, 0.12, shoeCol, { pos: [0, -0.42, 0.0] }, 12);
+    lb.sphere(0.066, shoeCol, { pos: [0, -0.45, 0.035], scale: [1, 0.66, 1.45] }, 14);
+    lb.box(0.12, 0.022, 0.2, look.shoes === 'sneakers' ? 0xffffff : darker(shoeCol, 0.6), { pos: [0, -0.49, 0.035] });
     if (look.shoes === 'sneakers') for (let i = 0; i < 3; i++) lb.box(0.04, 0.006, 0.01, 0xffffff, { pos: [0, -0.43 + i * 0.006, 0.06 + i * 0.022], rot: [0.5, 0, 0] });
     if (look.shoes === 'flats') lb.sphere(0.012, lighter(shoeCol, 0.4), { pos: [0, -0.44, 0.105] }, 5);
     g.add(lb.mesh(mat));
