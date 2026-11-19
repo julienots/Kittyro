@@ -17,6 +17,8 @@ export interface BatchItem {
 
 export type GeoProvider = (key: string) => { geo: THREE.BufferGeometry; mat: THREE.Material; shadow?: boolean } | null;
 
+const CHUNK = 24;
+
 export class InstanceBatch {
   meshes = new Map<string, THREE.InstancedMesh>();
   readonly group = new THREE.Group();
@@ -25,10 +27,14 @@ export class InstanceBatch {
 
   /** Rebuild every mesh from a list of items. Returns handles in the same order. */
   build(items: BatchItem[]): (Handle | null)[] {
+    // one mesh per (model, 24 m cell): off-screen cells are culled, and the shadow
+    // pass only draws the cells near the player
     const byKey = new Map<string, number[]>();
     items.forEach((it, i) => {
-      let l = byKey.get(it.key);
-      if (!l) byKey.set(it.key, (l = []));
+      const e = it.matrix.elements;
+      const k = `${it.key}#${Math.floor(e[12] / CHUNK)},${Math.floor(e[14] / CHUNK)}`;
+      let l = byKey.get(k);
+      if (!l) byKey.set(k, (l = []));
       l.push(i);
     });
     // drop unused meshes
@@ -47,12 +53,12 @@ export class InstanceBatch {
           this.group.remove(mesh);
           mesh.dispose();
         }
-        const g = this.provider(key);
+        const g = this.provider(key.slice(0, key.lastIndexOf('#')));
         if (!g) continue;
         mesh = new THREE.InstancedMesh(g.geo, g.mat, Math.max(4, Math.ceil(list.length * 1.25)));
         mesh.castShadow = g.shadow ?? this.castShadow;
         mesh.receiveShadow = this.receiveShadow;
-        mesh.frustumCulled = false; // bounds of instanced meshes are not auto-computed
+        mesh.frustumCulled = true; // bounds are recomputed after every rebuild
         this.meshes.set(key, mesh);
         this.group.add(mesh);
       }
@@ -75,6 +81,15 @@ export class InstanceBatch {
     if (!mesh) return;
     mesh.setMatrixAt(h.index, m);
     mesh.instanceMatrix.needsUpdate = true;
+    mesh.boundingSphere = null; // recomputed lazily below (growth, shaking)
+    if (!this.dirty.size) queueMicrotask(() => this.flushBounds());
+    this.dirty.add(mesh);
+  }
+
+  private dirty = new Set<THREE.InstancedMesh>();
+  private flushBounds(): void {
+    for (const m of this.dirty) m.computeBoundingSphere();
+    this.dirty.clear();
   }
 
   setColor(h: Handle, c: THREE.Color): void {

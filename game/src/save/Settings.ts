@@ -22,6 +22,8 @@ export interface Settings {
   intro: boolean;
   /** strike-only fishing for everyday fish */
   easyFishing: boolean;
+  /** the player chose the graphics quality in the menu (never overridden) */
+  qualityPicked?: boolean;
 }
 
 const KEY = 'mm_settings';
@@ -33,7 +35,7 @@ export function detectQuality(): Quality {
   const mem = (navigator as any).deviceMemory ?? 4;
   if (!mobile) return cores >= 8 ? 'realistic' : 'medium';
   if (mem <= 2 || cores <= 4) return 'low';
-  if (mem >= 8 && cores >= 8) return 'realistic';
+  if (mem >= 8 && cores >= 8) return 'high'; // Réaliste stays a manual choice on phones
   return 'medium';
 }
 
@@ -44,7 +46,13 @@ export function defaultSettings(): Settings {
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaultSettings(), ...JSON.parse(raw) };
+    if (raw) {
+      const s: Settings = { ...defaultSettings(), ...JSON.parse(raw) };
+      // 1.8.4: phones that were put on Réaliste automatically go back to Haute
+      const mobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+      if (mobile && s.quality === 'realistic' && !s.qualityPicked) s.quality = 'high';
+      return s;
+    }
   } catch { /* ignore */ }
   return defaultSettings();
 }

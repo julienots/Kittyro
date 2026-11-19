@@ -58,7 +58,7 @@ import { structureGeo } from '../models/Buildings';
 import { vcMat } from '../render/Materials';
 import { emojiSprite } from '../render/EmojiSprite';
 import type { MineFloor } from '../systems/Mining';
-import { WORLD_LAYOUT, isOpenWorld, nearbyRegions, regionAt, OPEN_REGIONS } from '../world/WorldMap';
+import { WORLD_LAYOUT, isOpenWorld, nearbyRegions, regionAt, regionRect, OPEN_REGIONS } from '../world/WorldMap';
 import { buildBackdrop, disposeBackdrop } from '../world/Backdrop';
 import { buildRegion } from '../world/regions';
 import type { RegionLayout } from '../world/Layout';
@@ -93,6 +93,7 @@ export class Game implements GameApi {
   private backdrop: THREE.Group | null = null;
   private backdropKey = '';
   private ghostT = 0;
+  private cullSmallT = 0;
   private crossT = 0;
   player!: Player;
   entities!: EntityManager;
@@ -784,6 +785,10 @@ export class Game implements GameApi {
     const zoomOut = this.rig.view === 'fp' ? 0.6 : Math.max(0, this.rig.zoom - 1);
     fog.near = (this.world.region === 'mine' ? 22 : 42 + zoomOut * 28) * fogK;
     fog.far = (this.renderer.profile.drawDistance + 20 + zoomOut * 40) * fogK;
+    // nothing past the fog is visible: don't send it to the GPU
+    const cam = this.renderer.camera;
+    const far = Math.max(60, fog.far + 8);
+    if (Math.abs(cam.far - far) > 3) { cam.far = far; cam.updateProjectionMatrix(); }
     globalUniforms.uSnow.value = this.world.layout.seasonal && seasonOfDay(st.time.day) === 'winter' ? 1 : this.world.region === 'frosty' ? 1 : 0;
     updateGlow(this.sky.state.night);
     updateWindows(this.sky.state.night);
@@ -800,6 +805,22 @@ export class Game implements GameApi {
     });
     // periodic logic
     this.streamGhosts(dt);
+    this.cullSmallT -= dt;
+    if (this.cullSmallT <= 0) {
+      this.cullSmallT = 0.25;
+      const q = this.renderer.quality;
+      const gR = q === 'low' ? 16 : q === 'medium' ? 24 : q === 'high' ? 32 : 44;
+      const sR = gR * 1.6;
+      const cur = this.world.region;
+      const p0 = WORLD_LAYOUT[cur];
+      for (const w of new Set([this.world, ...this.worlds.values()])) {
+        if (!w.layout) continue;
+        const p = WORLD_LAYOUT[w.region];
+        const f = this.player.pos.clone();
+        if (p && p0 && w !== this.world) { f.x += p0.ox - p.ox; f.z += p0.oz - p.oz; }
+        w.cullSmall(f, gR, sR);
+      }
+    }
     this.refreshNodesT -= dt;
     if (this.refreshNodesT <= 0) {
       this.refreshNodesT = 2;
@@ -1677,7 +1698,7 @@ export class Game implements GameApi {
     const cur = this.world.region;
     const open = isOpenWorld(cur);
     const season = seasonOfDay(this.ctx.state.time.day);
-    const near = open ? nearbyRegions(cur) : [];
+    const near = open ? this.ghostsWanted(20) : [];
     // indoors the outdoor regions just wait hidden; outdoors, far or out-of-season ones go
     if (open) for (const [id, w] of this.worlds) {
       if (w === this.world) continue;
@@ -1702,12 +1723,13 @@ export class Game implements GameApi {
       w.root.position.set(p.ox - p0.ox, 0, p.oz - p0.oz);
     }
     // the land in between
-    const key = `${season}|${this.ctx.state.seed}`;
+    const key = `${season}|${this.ctx.state.seed}|${this.renderer.quality}`;
     if (this.backdropKey !== key) {
       this.dropBackdrop();
       const layouts = new Map<RegionId, RegionLayout>();
       for (const id of OPEN_REGIONS) layouts.set(id, this.worlds.get(id)?.layout ?? buildRegion(id, this.ctx.state));
-      this.backdrop = buildBackdrop(layouts, season);
+      const q = this.renderer.quality;
+      this.backdrop = buildBackdrop(layouts, season, q === 'low' ? 0.25 : q === 'medium' ? 0.5 : q === 'high' ? 0.75 : 1);
       this.backdropKey = key;
       this.renderer.scene.add(this.backdrop);
     }
@@ -1723,6 +1745,25 @@ export class Game implements GameApi {
     for (const [id, g] of imps) g.visible = !this.worlds.has(id);
   }
 
+  /**
+   * Neighbouring regions worth loading in full: the ones closer to the player than
+   * the fog reaches (fewer on lower qualities; on Low the light stand-ins suffice).
+   */
+  private ghostsWanted(slack: number): RegionId[] {
+    const cur = this.world.region;
+    if (!isOpenWorld(cur)) return [];
+    const q = this.renderer.quality;
+    const reach = q === 'low' ? -1 : q === 'medium' ? 30 : q === 'high' ? 50 : 75;
+    if (reach < 0) return [];
+    const p0 = WORLD_LAYOUT[cur]!;
+    const gx = p0.ox + this.player.pos.x, gz = p0.oz + this.player.pos.z;
+    return nearbyRegions(cur, 200).filter((id) => {
+      const r = regionRect(id);
+      const d = Math.hypot(Math.max(r.x0 - gx, 0, gx - r.x1), Math.max(r.z0 - gz, 0, gz - r.z1));
+      return d < reach + slack;
+    });
+  }
+
   /** Load one missing neighbour now and then, so the horizon fills in without a hitch. */
   private streamGhosts(dt: number): void {
     this.ghostT -= dt;
@@ -1731,11 +1772,19 @@ export class Game implements GameApi {
     const cur = this.world.region;
     if (!isOpenWorld(cur)) return;
     const season = seasonOfDay(this.ctx.state.time.day);
-    for (const id of nearbyRegions(cur)) {
+    // drop neighbours we walked away from, load the ones we approach
+    for (const [id, w] of this.worlds) {
+      if (w === this.world || this.ghostsWanted(20).includes(id)) continue;
+      w.dispose();
+      this.worlds.delete(id);
+      this.syncImpostors();
+    }
+    for (const id of this.ghostsWanted(0)) {
       if (this.worlds.has(id)) continue;
       const w = this.makeWorld();
       w.lite = true;
       w.load(id);
+      if (this.renderer.quality === 'low' || this.renderer.quality === 'medium') w.setShadows(false);
       w.season = season;
       this.worlds.set(id, w);
       const p0 = WORLD_LAYOUT[cur]!, p = WORLD_LAYOUT[id]!;

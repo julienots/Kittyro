@@ -956,7 +956,7 @@ function settings(ui: UI): void {
       ? 'Vous voyez par les yeux de votre personnage, mains comprises. Joystick à gauche pour avancer, doigt à droite pour regarder autour (haut/bas aussi) — les deux en même temps. 👁️ en haut à droite pour revenir. Le point au centre vise l\'objet avec lequel interagir.'
       : 'Vue « maquette » au-dessus du personnage. Glissez le doigt sur la droite de l\'écran pour faire tourner la caméra et changer l\'inclinaison, ou utilisez les boutons ci-dessus. Pincez pour zoomer.'),
     h('h3', null, '✨ Qualité graphique'),
-    chips<Quality>([['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['ultra', 'Ultra'], ['realistic', 'Réaliste']], s.quality, (v) => set('quality', v)),
+    chips<Quality>([['low', 'Basse'], ['medium', 'Moyenne'], ['high', 'Haute'], ['ultra', 'Ultra'], ['realistic', 'Réaliste']], s.quality, (v) => { s.qualityPicked = true; set('quality', v); }),
     help(QUALITY_HELP[s.quality]),
     toggle('autoQuality', '⚡ Résolution adaptative', 'Baisse un peu la netteté automatiquement si le jeu ralentit, pour garder un mouvement fluide. Conseillé sur téléphone.'),
     toggle('showFps', '📈 Afficher les FPS', 'Affiche les images par seconde en bas de l\'écran (utile pour choisir la qualité : visez 30 ou plus).'),

@@ -44,6 +44,9 @@ interface NodeView {
   growth: number;
 }
 
+/** decorations too small to matter far away */
+const SMALL_PROPS = new Set(['wildflowers', 'tall_grass', 'rocks_small', 'mushrooms', 'fern', 'shells', 'ice_shards', 'ember_rocks', 'crystals_small', 'log_small', 'glow_shrooms']);
+
 const SPEC_FOLIAGE = (key: string) => key.includes('tree_') || key.includes('bush') || key.includes('weeds');
 
 export class World {
@@ -814,13 +817,42 @@ export class World {
     }
   }
 
+  /**
+   * Grass and small decorations are invisible from afar: hide their cells beyond
+   * `grassR` / `smallR` metres of the player (`focus` in this region's coordinates).
+   */
+  cullSmall(focus: THREE.Vector3, grassR: number, smallR: number): void {
+    const test = (m: THREE.InstancedMesh, r: number) => {
+      if (!m.boundingSphere) m.computeBoundingSphere();
+      const bs = m.boundingSphere!;
+      const dx = bs.center.x - focus.x, dz = bs.center.z - focus.z;
+      m.visible = Math.hypot(dx, dz) - bs.radius < r;
+    };
+    for (const m of this.grassBatch.meshes.values()) test(m, grassR);
+    for (const [k, m] of this.propBatch.meshes) if (SMALL_PROPS.has(k.slice(0, k.lastIndexOf('#')))) test(m, smallR);
+  }
+
   /** Becomes the region the player walks in. */
   activate(): void {
     this.lite = false;
+    this.setShadows(true);
     if (!this.grassBuilt && this.layout) {
       this.grassBuilt = true;
       this.rebuildGrass();
     }
+  }
+
+  /** Neighbouring regions can skip the shadow pass on modest devices. */
+  setShadows(on: boolean): void {
+    this.root.traverse((o) => {
+      if (!on) {
+        if (o.userData.cs === undefined) o.userData.cs = o.castShadow;
+        o.castShadow = false;
+      } else if (o.userData.cs !== undefined) {
+        o.castShadow = o.userData.cs;
+        delete o.userData.cs;
+      }
+    });
   }
 
   /** Goes back to being scenery: drop the dynamic lights (keeps the shader light count constant). */

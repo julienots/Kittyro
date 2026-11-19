@@ -28,7 +28,7 @@ const AMP: Partial<Record<RegionId, number>> = { mountains: 14, frosty: 15, embe
 const isWet = (t: number) => t === T.WATER || t === T.DEEP;
 const isRoad = (t: number) => t === T.PATH || t === T.BRIDGE || t === T.PLAZA;
 
-export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Season): THREE.Group {
+export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Season, detail = 1): THREE.Group {
   const group = new THREE.Group();
   group.name = 'backdrop';
   const noise = new Noise2D(9137);
@@ -106,21 +106,43 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
     const shade = groundShade(x, z);
     col[k * 3] = c.r * shade; col[k * 3 + 1] = c.g * shade; col[k * 3 + 2] = c.b * shade;
   }
-  const idx: number[] = [];
-  for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) {
-    const a = j * NX + i, b = a + 1, cc = a + NX, ee = cc + 1;
-    idx.push(a, cc, b, b, cc, ee);
+  // split into blocks of 24×24 cells (48 m) sharing one vertex buffer, so the
+  // land off-screen or past the fog is culled
+  const posA = new THREE.BufferAttribute(pos, 3), colA = new THREE.BufferAttribute(col, 3), uvA = new THREE.BufferAttribute(uv, 2);
+  const full = new THREE.BufferGeometry();
+  full.setAttribute('position', posA);
+  {
+    const all: number[] = [];
+    for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) { const a = j * NX + i; all.push(a, a + NX, a + 1, a + 1, a + NX, a + NX + 1); }
+    full.setIndex(all);
+    full.computeVertexNormals();
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, terrainMat());
-  ground.receiveShadow = true;
-  ground.name = 'backdrop_ground';
-  group.add(ground);
+  const nrmA = full.attributes.normal as THREE.BufferAttribute;
+  const B = 24;
+  for (let bj = 0; bj < NZ - 1; bj += B) for (let bi = 0; bi < NX - 1; bi += B) {
+    const idx: number[] = [];
+    let y0 = Infinity, y1 = -Infinity;
+    for (let j = bj; j < Math.min(NZ - 1, bj + B); j++) for (let i = bi; i < Math.min(NX - 1, bi + B); i++) {
+      const a = j * NX + i, b = a + 1, cc = a + NX, ee = cc + 1;
+      idx.push(a, cc, b, b, cc, ee);
+      y0 = Math.min(y0, pos[a * 3 + 1]); y1 = Math.max(y1, pos[a * 3 + 1]);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', posA);
+    geo.setAttribute('normal', nrmA);
+    geo.setAttribute('color', colA);
+    geo.setAttribute('uv', uvA);
+    geo.setIndex(idx);
+    const cx = X0 + (bi + B / 2) * STEP, cz = Z0 + (bj + B / 2) * STEP;
+    const half = (B * STEP) / 2;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, (y0 + y1) / 2, cz), Math.hypot(half, half, (y1 - y0) / 2 + 1));
+    geo.boundingBox = new THREE.Box3(new THREE.Vector3(cx - half, y0 - 1, cz - half), new THREE.Vector3(cx + half, y1 + 1, cz + half));
+    const ground = new THREE.Mesh(geo, terrainMat());
+    ground.receiveShadow = true;
+    ground.name = 'backdrop_ground';
+    group.add(ground);
+  }
+  full.dispose();
 
   // ---------------- rivers & sea flowing past the region borders ----------------
   for (const r of RECTS) {
@@ -172,15 +194,17 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
       p0.set(r.x0 + x, h - 0.05, r.z0 + z);
       q0.setFromAxisAngle(y0, rot);
       s0.setScalar(s);
-      let list = byKind.get(kind);
-      if (!list) byKind.set(kind, (list = []));
+      const ck = `${kind}#${Math.floor(p0.x / 32)},${Math.floor(p0.z / 32)}`; // culled per 32 m cell
+      let list = byKind.get(ck);
+      if (!list) byKind.set(ck, (list = []));
       list.push(m0.compose(p0, q0, s0).clone());
     };
     for (const n of L.nodes) if (n.kind.startsWith('tree_') && n.kind !== 'tree_giant') add(n.kind, n.x, n.z, 1, n.x * 3.1);
     for (const pr of L.props) if (pr.model.startsWith('tree:')) add(pr.model === 'tree:pine' && r.id === 'frosty' ? 'tree_snow' : `tree_${pr.model.slice(5)}`, pr.x, pr.z, pr.scale ?? 1, pr.rot ?? 0);
     const g = new THREE.Group();
     g.name = `impostor_${r.id}`;
-    for (const [kind, mats] of byKind) {
+    for (const [ck, mats] of byKind) {
+      const kind = ck.slice(0, ck.indexOf('#'));
       const im = new THREE.InstancedMesh(treeGeo(kind, season, 1), vcMat({ wind: 0.02, foliage: true }), mats.length);
       mats.forEach((m, i) => im.setMatrixAt(i, m));
       im.instanceMatrix.needsUpdate = true;
@@ -198,7 +222,8 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
   let seed = 424242;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), yAxis = new THREE.Vector3(0, 1, 0);
-  for (let n = 0, tries = 0; n < 2600 && tries < 40000; tries++) {
+  const maxTrees = Math.round(2600 * detail);
+  for (let n = 0, tries = 0; n < maxTrees && tries < 40000; tries++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     const { r, dist } = nearest(x, z);
     if (dist < 2.4 || dist > 100) continue;
@@ -215,17 +240,19 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
     q.setFromAxisAngle(yAxis, rnd() * Math.PI * 2);
     sc.setScalar(s);
     m4.compose(pv, q, sc);
-    let list = per.get(kind);
-    if (!list) per.set(kind, (list = []));
+    // grouped per 48 m cell so the far forest is culled off-screen
+    const cellKey = `${kind}#${Math.floor(x / 48)},${Math.floor(z / 48)}`;
+    let list = per.get(cellKey);
+    if (!list) per.set(cellKey, (list = []));
     list.push(m4.clone());
     n++;
   }
-  for (const [kind, mats] of per) {
+  for (const [cellKey, mats] of per) {
+    const kind = cellKey.slice(0, cellKey.indexOf('#'));
     const im = new THREE.InstancedMesh(treeGeo(kind, season, 1), vcMat({ wind: 0.02, foliage: true }), mats.length);
     mats.forEach((m, i) => im.setMatrixAt(i, m));
     im.instanceMatrix.needsUpdate = true;
     im.computeBoundingSphere();
-    im.castShadow = true;
     im.name = 'backdrop_trees';
     group.add(im);
   }

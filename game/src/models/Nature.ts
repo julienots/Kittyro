@@ -216,7 +216,7 @@ export function grassTuftGeo(): THREE.BufferGeometry {
   const b = mb();
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2;
-    const g = new THREE.ConeGeometry(0.035, 0.28 + (i % 2) * 0.08, 3);
+    const g = new THREE.ConeGeometry(0.035, 0.28 + (i % 2) * 0.08, 3, 1, true); // no hidden base cap
     b.geo(g, [0xffffff, 0xffffff], { pos: [Math.sin(a) * 0.07, 0.13, Math.cos(a) * 0.07], rot: [Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35] });
   }
   // gradient baked darker at bottom via vertex colours
@@ -232,10 +232,11 @@ export function grassTuftGeo(): THREE.BufferGeometry {
 
 export function flowerTuftGeo(): THREE.BufferGeometry {
   const b = mb();
-  b.cyl(0.01, 0.012, 0.22, 0x4f9e46, { pos: [0, 0.11, 0] }, 4);
-  b.sphere(0.04, 0x5cb85c, { pos: [0.04, 0.04, 0], scale: [1.5, 0.35, 0.7] }, 5);
-  for (let i = 0; i < 5; i++) b.sphere(0.04, 0xffffff, { pos: [Math.sin(i * 1.256) * 0.05, 0.23, Math.cos(i * 1.256) * 0.05], scale: [1, 0.45, 1] }, 5);
-  b.sphere(0.028, 0xffe27a, { pos: [0, 0.24, 0] }, 5);
+  // low-poly on purpose: thousands are drawn (≈60 triangles instead of ≈300)
+  b.cyl(0.01, 0.012, 0.22, 0x4f9e46, { pos: [0, 0.11, 0] }, 3);
+  b.ico(0.04, 0x5cb85c, { pos: [0.04, 0.04, 0], scale: [1.5, 0.35, 0.7] }, 0);
+  b.ico(0.085, 0xffffff, { pos: [0, 0.23, 0], scale: [1, 0.32, 1] }, 0);
+  b.ico(0.03, 0xffe27a, { pos: [0, 0.255, 0] }, 0);
   return b.build();
 }
 
