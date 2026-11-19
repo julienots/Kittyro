@@ -20,9 +20,9 @@ export interface QualityProfile {
 }
 
 export const QUALITY: Record<Quality, QualityProfile> = {
-  low: { pixelRatio: 1.0, shadow: 0, post: false, tilt: false, bloomPasses: 0, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: false, drawDistance: 48 },
-  medium: { pixelRatio: 1.25, shadow: 1024, post: true, tilt: false, bloomPasses: 1, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 70 },
-  high: { pixelRatio: 1.75, shadow: 2048, post: true, tilt: true, bloomPasses: 2, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 90 },
+  low: { pixelRatio: 1.5, shadow: 0, post: false, tilt: false, bloomPasses: 0, particles: 0.4, grass: 0.35, outlines: false, lights: 0, antialias: true, drawDistance: 48 },
+  medium: { pixelRatio: 1.6, shadow: 1024, post: true, tilt: false, bloomPasses: 1, particles: 0.7, grass: 0.7, outlines: true, lights: 2, antialias: true, drawDistance: 70 },
+  high: { pixelRatio: 2.0, shadow: 2048, post: true, tilt: true, bloomPasses: 2, particles: 1, grass: 1, outlines: true, lights: 4, antialias: true, drawDistance: 90 },
   ultra: { pixelRatio: 2.25, shadow: 4096, post: true, tilt: true, bloomPasses: 3, particles: 1, grass: 1.4, outlines: true, lights: 6, antialias: true, drawDistance: 120 },
   realistic: { pixelRatio: 2, shadow: 4096, post: true, tilt: false, bloomPasses: 0, particles: 1, grass: 1.6, outlines: false, lights: 8, antialias: true, drawDistance: 140, realistic: true },
 };
@@ -187,6 +187,8 @@ export class Renderer {
   /** grading inputs, set by the game every frame */
   grade = { warm: 0, night: 0, time: 0 };
   private dynScale = 1;
+  /** 0 = all effects, 1 = no tilt-shift blur, 2 = no bloom either (set by the FPS governor) */
+  private fxLevel = 0;
   private fpsAcc = 0;
   private fpsFrames = 0;
   private goodTime = 0;
@@ -232,6 +234,7 @@ export class Renderer {
     this.renderer.shadowMap.needsUpdate = true;
     if (this.scene.fog instanceof THREE.Fog) this.scene.fog.far = this.profile.drawDistance + 20;
     this.dynScale = 1;
+    this.fxLevel = 0;
     this.applyRealism();
     // materials must recompile for shadow changes
     this.scene.traverse((o) => {
@@ -285,16 +288,24 @@ export class Renderer {
     this.fpsAcc = 0;
     this.fpsFrames = 0;
     if (!this.autoQuality) return;
-    if (this.fps < 45 && this.dynScale > 0.6) {
-      this.dynScale = Math.max(0.6, this.dynScale - 0.1);
+    // keep the picture sharp: drop costly screen effects first (miniature blur,
+    // then bloom), lower the resolution only a little and only as a last resort
+    const minScale = Math.max(0.8, 1.25 / Math.max(1, Math.min(window.devicePixelRatio || 1, this.profile.pixelRatio)));
+    if (this.fps < 48) {
       this.goodTime = 0;
-      this.resize();
+      if (this.fxLevel < 2 && this.post) this.fxLevel++;
+      else if (this.dynScale > minScale) {
+        this.dynScale = Math.max(minScale, this.dynScale - 0.1);
+        this.resize();
+      }
     } else if (this.fps > 57) {
       this.goodTime += 1.5;
-      if (this.goodTime > 8 && this.dynScale < 1) {
-        this.dynScale = Math.min(1, this.dynScale + 0.05);
+      if (this.goodTime > 8) {
         this.goodTime = 0;
-        this.resize();
+        if (this.dynScale < 1) {
+          this.dynScale = Math.min(1, this.dynScale + 0.05);
+          this.resize();
+        } else if (this.fxLevel > 0) this.fxLevel--;
       }
     }
   }
@@ -312,7 +323,8 @@ export class Renderer {
       this.renderer.setRenderTarget(this.post.rt);
       this.renderer.render(this.scene, this.camera);
       const u = this.post.mat.uniforms;
-      u.uAmount.value = this.profile.tilt ? this.tiltAmount : 0;
+      u.uAmount.value = this.profile.tilt && this.fxLevel < 1 ? this.tiltAmount : 0;
+      u.uBloom.value = this.fxLevel >= 2 ? 0 : 0.45;
       u.uWarm.value = this.grade.warm;
       u.uNight.value = this.grade.night;
       u.uTime.value = this.grade.time % 100;

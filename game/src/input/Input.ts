@@ -38,7 +38,15 @@ export class Input {
     this.knob.className = 'joy-knob';
     this.base.appendChild(this.knob);
     uiRoot.appendChild(this.base);
-    canvas.addEventListener('pointerdown', this.down);
+    // touches that start on bare HUD areas (not on a button or panel) still reach the game
+    window.addEventListener('pointerdown', (e) => {
+      const t = e.target as Element | null;
+      if (t === canvas) return this.down(e);
+      if (!t || !t.closest) return;
+      if (t.closest('button, a, input, select, textarea, .btn, .panel, .modal, .dialog, .minigame, .tracker, .char-preview, .mg-canvas, [data-tap], .tool-wheel, .iw-btn')) return;
+      this.down(e);
+    }, true);
+    canvas.addEventListener('lostpointercapture', (e) => { if (e.pointerId === this.joyId) this.releaseJoy(); });
     window.addEventListener('pointermove', this.move);
     window.addEventListener('pointerup', this.up);
     window.addEventListener('pointercancel', this.up);
@@ -87,6 +95,8 @@ export class Input {
       this.onDrag?.(...this.norm(e.clientX, e.clientY), 'start');
       return;
     }
+    // a joystick finger the browser lost (no pointerup) must not block the next touch
+    if (this.joyId !== null && e.pointerId !== this.joyId && this.joystickAllowed(e.clientX) && this.pointers.size === 1) this.releaseJoy();
     if (this.joyId === null && this.joystickAllowed(e.clientX) && e.pointerType !== 'mouse') {
       this.joyId = e.pointerId;
       this.joyOrigin = { x: e.clientX, y: e.clientY };
@@ -126,14 +136,16 @@ export class Input {
       return;
     }
     if (e.pointerId === this.joyId) {
-      const R = 52;
+      const R = 60;
       let dx = e.clientX - this.joyOrigin.x, dy = e.clientY - this.joyOrigin.y;
       const d = Math.hypot(dx, dy);
       if (d > R) {
         dx = (dx / d) * R;
         dy = (dy / d) * R;
       }
-      this.joyVec = { x: dx / R, y: -dy / R };
+      // small dead zone, then full range
+      const k = d < 6 ? 0 : 1;
+      this.joyVec = { x: (dx / R) * k, y: (-dy / R) * k };
       this.knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
     }
   };

@@ -1768,7 +1768,7 @@ export class Game implements GameApi {
   private streamGhosts(dt: number): void {
     this.ghostT -= dt;
     if (this.ghostT > 0) return;
-    this.ghostT = 0.4;
+    this.ghostT = 1.0;
     const cur = this.world.region;
     if (!isOpenWorld(cur)) return;
     const season = seasonOfDay(this.ctx.state.time.day);

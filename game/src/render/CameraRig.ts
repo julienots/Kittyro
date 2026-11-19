@@ -122,14 +122,14 @@ export class CameraRig {
       return;
     }
     // look slightly ahead in the walking direction
-    this.lookAhead.x = damp(this.lookAhead.x, velocity.x * 0.35, 3, dt);
-    this.lookAhead.z = damp(this.lookAhead.z, velocity.z * 0.35, 3, dt);
+    // the view stays centred on the character (no drift ahead while walking)
+    this.lookAhead.set(0, 0, 0);
     this.target.copy(follow).add(this.lookAhead);
     if (this.bounds) {
       this.target.x = clamp(this.target.x, this.bounds.x0, this.bounds.x1);
       this.target.z = clamp(this.target.z, this.bounds.z0, this.bounds.z1);
     }
-    const lambda = this.mode === 'house' ? 4 : 5;
+    const lambda = this.mode === 'house' ? 6 : 9;
     this.cur.x = damp(this.cur.x, this.target.x, lambda, dt);
     this.cur.y = damp(this.cur.y, this.target.y, lambda, dt);
     this.cur.z = damp(this.cur.z, this.target.z, lambda, dt);
