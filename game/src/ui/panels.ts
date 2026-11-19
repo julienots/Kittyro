@@ -1,4 +1,5 @@
 import { h, fmt } from './dom';
+import { RECTS, WORLD_BOUNDS } from '../world/WorldMap';
 import type { UI } from './UI';
 import { item, CAT_NAMES, isEdible, ITEMS } from '../data/items';
 import { COLLECTIONS, COLLECTION_BY_ID } from '../systems/Collections';
@@ -261,8 +262,7 @@ function map(ui: UI, unlockedNow?: string, selected?: string): void {
   const regions = REGIONS.filter((r) => r.id !== 'house');
   const here = g.regionId === 'house' ? 'farm' : g.regionId;
   const links: [string, string][] = [['farm', 'village'], ['farm', 'woods'], ['farm', 'mountains'], ['mountains', 'mine'], ['mountains', 'frosty'], ['village', 'coast'], ['village', 'ember'], ['farm', 'hamlet'], ['farm', 'highlands']];
-  const P = (id: string) => { const m = REGION_BY_ID[id as 'farm'].map; return [m[0] * MAP_W, m[1] * MAP_H] as [number, number]; };
-  const R = (id: string) => 62 * (MAP_STYLE[id]?.size ?? 1);
+  const P = (id: string) => { const rc = RECTS.find((q) => q.id === id); if (rc) { const B0 = WORLD_BOUNDS, PD = 26; return [((rc.x0 + rc.x1) / 2 - B0.x0 + PD) * MAP_W / (B0.x1 - B0.x0 + PD * 2), ((rc.z0 + rc.z1) / 2 - B0.z0 + PD) * MAP_H / (B0.z1 - B0.z0 + PD * 2)] as [number, number]; } const m = REGION_BY_ID[id as 'farm'].map; return [m[0] * MAP_W, m[1] * MAP_H] as [number, number]; };
   const sel = selected ?? here;
   const parts: string[] = [];
   parts.push(`<svg viewBox="0 0 ${MAP_W} ${MAP_H}" class="mapsvg" xmlns="http://www.w3.org/2000/svg">
@@ -272,44 +272,66 @@ function map(ui: UI, unlockedNow?: string, selected?: string): void {
       <filter id="gray"><feColorMatrix type="saturate" values="0.15"/></filter>
     </defs>
 `);
-  // trails between islands
-  for (const [a, b] of links) {
-    const A = P(a), B = P(b);
-    const on = st.regions[a as 'farm'].unlocked && st.regions[b as 'farm'].unlocked;
-    const mx = (A[0] + B[0]) / 2 + (B[1] - A[1]) * 0.12, my = (A[1] + B[1]) / 2 - (B[0] - A[0]) * 0.12 - 10;
-    const d = `M${A[0]} ${A[1]} Q${mx} ${my} ${B[0]} ${B[1]}`;
-    parts.push(`<path d="${d}" stroke="${on ? '#8a6a4a' : '#ffffff'}" stroke-opacity="${on ? 0.35 : 0.25}" stroke-width="9" fill="none" stroke-linecap="round"/>`);
-    parts.push(`<path d="${d}" stroke="${on ? '#fff8ec' : '#ffffff'}" stroke-opacity="${on ? 1 : 0.5}" stroke-width="4" stroke-dasharray="10 9" fill="none" stroke-linecap="round" class="${on ? 'map-trail' : ''}"/>`);
+  // one continuous land: the real geography of the open world
+  const B = WORLD_BOUNDS, PAD = 26;
+  const sx = MAP_W / (B.x1 - B.x0 + PAD * 2), sz = MAP_H / (B.z1 - B.z0 + PAD * 2);
+  const MX = (x: number) => (x - B.x0 + PAD) * sx, MZ = (z: number) => (z - B.z0 + PAD) * sz;
+  parts.push(`<rect width="${MAP_W}" height="${MAP_H}" fill="#7fb8d8"/>`);
+  // land mass (a soft blob around every region), the sea beyond the coast stays blue
+  const land: string[] = [];
+  for (const rc of RECTS) {
+    const x0 = MX(rc.x0 - 14), z0 = MZ(rc.z0 - 14), x1 = MX(rc.x1 + (rc.id === 'coast' ? 2 : 14)), z1 = MZ(rc.z1 + (rc.id === 'coast' ? 2 : 14));
+    land.push(`<rect x="${x0.toFixed(1)}" y="${z0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(z1 - z0).toFixed(1)}" rx="38" fill="#a6d27e"/>`);
   }
-  // islands
-  regions.forEach((r, i) => {
-    const [cx, cy] = P(r.id);
+  parts.push(`<g filter="url(#soft)">${land.join('')}</g>`);
+  // far hills & forest texture
+  for (let i = 0; i < 90; i++) {
+    const x = ((i * 137.5) % MAP_W), y = ((i * 71.3 + (i % 7) * 40) % MAP_H);
+    parts.push(`<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${(6 + (i % 5) * 2).toFixed(0)}" fill="#6fae5a" opacity=".22"/>`);
+  }
+  // roads between neighbours
+  for (const [a, b] of links) {
+    if (b === 'mine') continue;
+    const A = P(a), Bp = P(b);
+    const on = st.regions[a as 'farm'].unlocked && st.regions[b as 'farm'].unlocked;
+    const d = `M${A[0].toFixed(1)} ${A[1].toFixed(1)} L${Bp[0].toFixed(1)} ${Bp[1].toFixed(1)}`;
+    parts.push(`<path d="${d}" stroke="#8a6a4a" stroke-opacity=".45" stroke-width="10" fill="none" stroke-linecap="round"/>`);
+    parts.push(`<path d="${d}" stroke="${on ? '#f4dfb4' : '#e8e0d0'}" stroke-width="5" stroke-dasharray="${on ? '0' : '8 8'}" fill="none" stroke-linecap="round" class="${on ? 'map-trail' : ''}"/>`);
+  }
+  // regions as areas of the same land
+  regions.forEach((r) => {
     const s = MAP_STYLE[r.id];
-    const rad = R(r.id);
     const unlocked = st.regions[r.id].unlocked;
     const isSel = sel === r.id;
+    const rc = RECTS.find((q) => q.id === r.id);
+    let cx: number, cy: number, rad: number;
     const cls = `map-isle${unlocked ? '' : ' locked'}${unlockedNow === r.id ? ' unlocking' : ''}${isSel ? ' sel' : ''}`;
-    parts.push(`<g class="${cls}" data-r="${r.id}" style="transform-origin:${cx}px ${cy}px" ${unlocked ? '' : 'filter="url(#gray)"'}>`);
-    if (isSel) parts.push(`<ellipse cx="${cx}" cy="${cy + 6}" rx="${rad * 1.35}" ry="${rad * 0.95}" fill="url(#glow)"/>`);
-    parts.push(`<g filter="url(#soft)"><path d="${blobPath(cx, cy + 16, rad, i * 1.7)}" fill="${s.side}"/>`);
-    parts.push(`<path d="${blobPath(cx, cy + 9, rad * 0.98, i * 1.7)}" fill="${s.side}" style="filter:brightness(1.25)"/>`);
-    parts.push(`<path d="${blobPath(cx, cy, rad, i * 1.7)}" fill="${s.top}"/></g>`);
-    parts.push(`<path d="${blobPath(cx - rad * 0.15, cy - rad * 0.12, rad * 0.62, i * 2.1 + 1)}" fill="${s.top2}" opacity=".55"/>`);
+    if (rc) {
+      const x0 = MX(rc.x0), z0 = MZ(rc.z0), x1 = MX(rc.x1), z1 = MZ(rc.z1);
+      cx = (x0 + x1) / 2; cy = (z0 + z1) / 2; rad = Math.min(x1 - x0, z1 - z0) * 0.42;
+      parts.push(`<g class="${cls}" data-r="${r.id}" style="transform-origin:${cx}px ${cy}px" ${unlocked ? '' : 'filter="url(#gray)"'}>`);
+      if (isSel) parts.push(`<rect x="${x0 - 8}" y="${z0 - 8}" width="${x1 - x0 + 16}" height="${z1 - z0 + 16}" rx="22" fill="url(#glow)"/>`);
+      parts.push(`<rect x="${x0.toFixed(1)}" y="${z0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(z1 - z0).toFixed(1)}" rx="16" fill="${s.top}" stroke="${isSel ? '#ffd166' : '#ffffff'}" stroke-opacity="${isSel ? 1 : 0.5}" stroke-width="${isSel ? 4 : 2}"/>`);
+      parts.push(`<path d="${blobPath(cx - rad * 0.2, cy - rad * 0.15, rad * 0.7, cx * 0.01)}" fill="${s.top2}" opacity=".5"/>`);
+    } else {
+      [cx, cy] = P(r.id);
+      rad = 22;
+      parts.push(`<g class="${cls}" data-r="${r.id}" style="transform-origin:${cx}px ${cy}px" ${unlocked ? '' : 'filter="url(#gray)"'}>`);
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${rad}" fill="${s.top}" stroke="#ffffff" stroke-width="2"/>`);
+    }
     parts.push(islandDeco(s.deco, cx, cy, rad, st.hamlet.villagers.length));
     if (!unlocked) parts.push(`<g class="map-fog"><ellipse cx="${cx - 18}" cy="${cy - 4}" rx="34" ry="20" fill="#fff" opacity=".85"/><ellipse cx="${cx + 20}" cy="${cy + 2}" rx="30" ry="18" fill="#fff" opacity=".8"/><ellipse cx="${cx}" cy="${cy - 16}" rx="26" ry="16" fill="#fff" opacity=".9"/><text x="${cx}" y="${cy + 2}" text-anchor="middle" font-size="22">🔒</text></g>`);
-    // ribbon label
     const label = unlocked ? r.name : '???';
-    const w = Math.max(70, label.length * 9.5 + 24);
-    const ly = cy + rad * 0.62 + 26;
-    parts.push(`<g class="map-label"><path d="M${cx - w / 2 - 10} ${ly - 8} l10 8 l-10 8 h14 v-16Z" fill="#c8a06a"/><path d="M${cx + w / 2 + 10} ${ly - 8} l-10 8 l10 8 h-14 v-16Z" fill="#c8a06a"/>
-      <rect x="${cx - w / 2}" y="${ly - 13}" width="${w}" height="24" rx="6" fill="${isSel ? '#ffd166' : '#fff8ec'}" stroke="#c8a06a" stroke-width="2"/>
-      <text x="${cx}" y="${ly + 4}" text-anchor="middle" font-size="15" font-weight="600" fill="#5a4036">${label}</text></g>`);
-    if (r.id === here) parts.push(`<g class="map-pin" style="transform-origin:${cx}px ${cy - rad * 0.6}px"><path d="M${cx} ${cy - rad * 0.3} c-14 -16 -16 -22 -16 -30 a16 16 0 0 1 32 0 c0 8 -2 14 -16 30Z" fill="#ff6f91" stroke="#fff" stroke-width="3"/><circle cx="${cx}" cy="${cy - rad * 0.3 - 30}" r="7" fill="#fff"/></g>`);
+    const w = Math.max(70, label.length * 8.6 + 22);
+    const ly = cy + Math.min(rad * 0.9 + 14, 44);
+    parts.push(`<g class="map-label"><rect x="${cx - w / 2}" y="${ly - 12}" width="${w}" height="22" rx="6" fill="${isSel ? '#ffd166' : '#fff8ec'}" stroke="#c8a06a" stroke-width="2"/>
+      <text x="${cx}" y="${ly + 4}" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5a4036">${label}</text></g>`);
+    if (r.id === here) parts.push(`<g class="map-pin" style="transform-origin:${cx}px ${cy - 30}px"><path d="M${cx} ${cy - 4} c-14 -16 -16 -22 -16 -30 a16 16 0 0 1 32 0 c0 8 -2 14 -16 30Z" fill="#ff6f91" stroke="#fff" stroke-width="3"/><circle cx="${cx}" cy="${cy - 34}" r="7" fill="#fff"/></g>`);
     parts.push('</g>');
   });
   // drifting clouds, compass & cartouche
   const cloud = (x: number, y: number, s: number, delay: number) => `<g class="map-cloud" style="animation-delay:${delay}s"><g transform="translate(${x} ${y}) scale(${s})" opacity=".85"><ellipse cx="0" cy="0" rx="42" ry="16" fill="#fff"/><ellipse cx="-18" cy="-10" rx="22" ry="16" fill="#fff"/><ellipse cx="14" cy="-14" rx="26" ry="20" fill="#fff"/></g></g>`;
-  parts.push(cloud(120, 90, 0.9, 0), cloud(820, 520, 1.1, -14), cloud(560, 40, 0.7, -30), cloud(60, 560, 0.8, -8));
+  parts.push(cloud(120, 60, 0.7, 0), cloud(820, 560, 0.8, -14));
   parts.push(`<g transform="translate(925 72)" class="map-compass"><circle r="38" fill="#fff8ec" stroke="#c8a06a" stroke-width="3"/><path d="M0 -32 L7 0 L0 32 L-7 0Z" fill="#e8665a"/><path d="M0 32 L7 0 L-7 0Z" fill="#5a4036"/><path d="M-32 0 L0 -6 L32 0 L0 6Z" fill="#c8a06a" opacity=".7"/><circle r="4" fill="#fff"/><text y="-42" text-anchor="middle" font-size="14" font-weight="600" fill="#5a4036">N</text></g>`);
   parts.push(`<g transform="translate(24 24)"><rect width="250" height="54" rx="14" fill="#fff8ec" stroke="#c8a06a" stroke-width="3"/><text x="125" y="24" text-anchor="middle" font-size="18" font-weight="600" fill="#5a4036">Vallée de Mossy Meadows</text><text x="125" y="43" text-anchor="middle" font-size="12.5" fill="#8a6e60">${regions.filter((r) => st.regions[r.id].unlocked).length}/${regions.length} régions découvertes</text></g>`);
   parts.push('</svg>');

@@ -58,6 +58,10 @@ import { structureGeo } from '../models/Buildings';
 import { vcMat } from '../render/Materials';
 import { emojiSprite } from '../render/EmojiSprite';
 import type { MineFloor } from '../systems/Mining';
+import { WORLD_LAYOUT, isOpenWorld, nearbyRegions, regionAt, OPEN_REGIONS } from '../world/WorldMap';
+import { buildBackdrop, disposeBackdrop } from '../world/Backdrop';
+import { buildRegion } from '../world/regions';
+import type { RegionLayout } from '../world/Layout';
 import { rng } from '../core/Random';
 
 interface ActionTarget {
@@ -83,6 +87,13 @@ export class Game implements GameApi {
   private viewBeforePlacement: 'iso' | 'fp' | null = null;
   ctx!: Ctx;
   world!: World;
+  /** open world: every loaded outdoor region (the active one + neighbours seen in the distance) */
+  private worlds = new Map<RegionId, World>();
+  private indoorWorld!: World;
+  private backdrop: THREE.Group | null = null;
+  private backdropKey = '';
+  private ghostT = 0;
+  private crossT = 0;
   player!: Player;
   entities!: EntityManager;
   fishing!: FishingGame;
@@ -223,11 +234,15 @@ export class Game implements GameApi {
     for (const off of this.offs) off();
     this.offs = [];
     if (this.world) {
+      for (const w of this.worlds.values()) w.dispose();
+      this.worlds.clear();
+      this.indoorWorld?.dispose();
       this.world.dispose();
       this.renderer.scene.remove(this.world.root, this.entities.group, this.player.root);
+      this.dropBackdrop();
     }
     this.ctx = new Ctx(state);
-    this.world = new World(this.ctx, this.particles, () => this.renderer.profile.grass, () => this.renderer.profile.lights);
+    this.world = this.indoorWorld = this.makeWorld();
     this.ctx.terrain = {
       isTillable: (x, z) => this.world.region === 'farm' && this.tileFree(x, z, [T.GRASS, T.DIRT]),
       isBuildable: (x, z) => (this.world.region === 'farm' || this.world.region === 'hamlet') && this.tileFree(x, z, [T.GRASS, T.DIRT, T.PATH, T.FOREST], true),
@@ -237,7 +252,7 @@ export class Game implements GameApi {
     this.player.rebuild();
     this.entities = new EntityManager(this.ctx, this.world, this.particles);
     this.entities.outline = this.renderer.profile.outlines;
-    this.renderer.scene.add(this.world.root, this.entities.group, this.player.root);
+    this.renderer.scene.add(this.entities.group, this.player.root);
     this.fishing?.end();
     this.fishing = new FishingGame(this.ctx, this.player, this.particles, this.ui, audio, this.renderer.scene);
     this.fishing.tipFn = (out) => this.rig.view === 'fp' && this.fpHands.rodTip(this.renderer.camera, out);
@@ -497,7 +512,10 @@ export class Game implements GameApi {
     this.mineLadder?.removeFromParent();
     this.mineLadder = null;
     this.mineLadderPos = null;
-    this.world.load(region, floor);
+    const target = this.worldFor(region);
+    target.lite = false;
+    target.load(region, floor);
+    this.activateWorld(target);
     this.world.house?.setFirstPerson(this.rig.view === 'fp');
     st.player.region = region;
     if (region !== 'house' && region !== 'mine') this.lastSeason = seasonOfDay(st.time.day);
@@ -518,7 +536,7 @@ export class Game implements GameApi {
     this.sky.aurora = region === 'frosty' ? 1 : 0;
     this.sky.tint.set(region === 'ember' ? 0xffd0b0 : 0xffffff);
     const L = this.world.layout;
-    this.rig.bounds = region === 'house' ? { x0: 8, z0: 5, x1: 14, z1: 9 } : { x0: 2, z0: 2, x1: L.w - 2, z1: L.d - 2 };
+    this.rig.bounds = region === 'house' ? { x0: 8, z0: 5, x1: 14, z1: 9 } : isOpenWorld(region) ? null : { x0: 2, z0: 2, x1: L.w - 2, z1: L.d - 2 };
     this.player.setLantern(region === 'mine');
     this.particles.clear();
     this.life.clear();
@@ -781,6 +799,7 @@ export class Game implements GameApi {
       walkable: (x, z) => this.world.walkable(x, z) && !this.world.isBlocked(x, z, 0.1),
     });
     // periodic logic
+    this.streamGhosts(dt);
     this.refreshNodesT -= dt;
     if (this.refreshNodesT <= 0) {
       this.refreshNodesT = 2;
@@ -788,6 +807,7 @@ export class Game implements GameApi {
     }
     if (!this.title) {
       this.updateInteraction(dt);
+      this.checkBorders(dt);
       this.checkPortals(dt);
       this.updateFestival(dt);
       this.autosaveT -= dt;
@@ -1612,6 +1632,186 @@ export class Game implements GameApi {
       else if (this.ui.dialogueEl) this.ui.closeDialogue();
       else this.ui.openPanel('settings');
     } else if (k >= '1' && k <= '6') this.selectTool((['hoe', 'can', 'sickle', 'axe', 'pickaxe', 'rod'] as ToolId[])[+k - 1]);
+  }
+
+  // ------------------------------------------------------------ open world
+  private makeWorld(): World {
+    const w = new World(this.ctx, this.particles, () => this.renderer.profile.grass, () => this.renderer.profile.lights);
+    this.renderer.scene.add(w.root);
+    return w;
+  }
+
+  private worldFor(region: RegionId): World {
+    if (!isOpenWorld(region)) return this.indoorWorld;
+    let w = this.worlds.get(region);
+    if (!w) {
+      w = this.makeWorld();
+      this.worlds.set(region, w);
+    }
+    return w;
+  }
+
+  /** Make `w` the region the player is in and lay the open world out around it. */
+  private activateWorld(w: World): void {
+    if (this.world !== w) {
+      this.world.deactivate();
+      this.world = w;
+      (this.player as any).world = w;
+      (this.entities as any).world = w;
+      (this.placement as any).world = w;
+    }
+    w.activate();
+    this.layoutOpenWorld();
+  }
+
+  private dropBackdrop(): void {
+    if (!this.backdrop) return;
+    disposeBackdrop(this.backdrop);
+    this.backdrop.removeFromParent();
+    this.backdrop = null;
+    this.backdropKey = '';
+  }
+
+  /** Position every loaded region relative to the current one; unload the far ones. */
+  private layoutOpenWorld(): void {
+    const cur = this.world.region;
+    const open = isOpenWorld(cur);
+    const season = seasonOfDay(this.ctx.state.time.day);
+    const near = open ? nearbyRegions(cur) : [];
+    // indoors the outdoor regions just wait hidden; outdoors, far or out-of-season ones go
+    if (open) for (const [id, w] of this.worlds) {
+      if (w === this.world) continue;
+      if (!near.includes(id) || w.season !== season) {
+        w.dispose();
+        this.worlds.delete(id);
+      }
+    }
+    if (this.indoorWorld !== this.world) this.indoorWorld.root.visible = false;
+    this.world.root.visible = true;
+    if (!open) {
+      if (this.backdrop) this.backdrop.visible = false;
+      for (const w of this.worlds.values()) w.root.visible = false;
+      this.world.root.position.set(0, 0, 0);
+      return;
+    }
+    const p0 = WORLD_LAYOUT[cur]!;
+    for (const [id, w] of this.worlds) {
+      const p = WORLD_LAYOUT[id]!;
+      w.root.visible = true;
+      w.root.position.set(p.ox - p0.ox, 0, p.oz - p0.oz);
+    }
+    // the land in between
+    const key = `${season}|${this.ctx.state.seed}`;
+    if (this.backdropKey !== key) {
+      this.dropBackdrop();
+      const layouts = new Map<RegionId, RegionLayout>();
+      for (const id of OPEN_REGIONS) layouts.set(id, this.worlds.get(id)?.layout ?? buildRegion(id, this.ctx.state));
+      this.backdrop = buildBackdrop(layouts, season);
+      this.backdropKey = key;
+      this.renderer.scene.add(this.backdrop);
+    }
+    this.backdrop!.visible = true;
+    this.backdrop!.position.set(-p0.ox, 0, -p0.oz);
+    this.syncImpostors();
+  }
+
+  /** Far regions show a light stand-in (terrain + trees) until they are loaded. */
+  private syncImpostors(): void {
+    const imps = this.backdrop?.userData.impostors as Map<RegionId, THREE.Group> | undefined;
+    if (!imps) return;
+    for (const [id, g] of imps) g.visible = !this.worlds.has(id);
+  }
+
+  /** Load one missing neighbour now and then, so the horizon fills in without a hitch. */
+  private streamGhosts(dt: number): void {
+    this.ghostT -= dt;
+    if (this.ghostT > 0) return;
+    this.ghostT = 0.4;
+    const cur = this.world.region;
+    if (!isOpenWorld(cur)) return;
+    const season = seasonOfDay(this.ctx.state.time.day);
+    for (const id of nearbyRegions(cur)) {
+      if (this.worlds.has(id)) continue;
+      const w = this.makeWorld();
+      w.lite = true;
+      w.load(id);
+      w.season = season;
+      this.worlds.set(id, w);
+      const p0 = WORLD_LAYOUT[cur]!, p = WORLD_LAYOUT[id]!;
+      w.root.position.set(p.ox - p0.ox, 0, p.oz - p0.oz);
+      this.syncImpostors();
+      return; // one per tick
+    }
+  }
+
+  /** Walking over a region border: switch regions in place, no loading screen. */
+  private checkBorders(dt: number): boolean {
+    const cur = this.world.region;
+    if (!isOpenWorld(cur)) return false;
+    this.crossT -= dt;
+    const L = this.world.layout;
+    const px = this.player.pos.x, pz = this.player.pos.z;
+    const m = 0.5;
+    const dx = px < m ? -1 : px > L.w - m ? 1 : 0, dz = pz < m ? -1 : pz > L.d - m ? 1 : 0;
+    if (!dx && !dz) return true;
+    const p0 = WORLD_LAYOUT[cur]!;
+    const gx = p0.ox + px, gz = p0.oz + pz;
+    const next = regionAt(gx + dx * 1.2, gz + dz * 1.2);
+    if (!next || next === cur) return true;
+    const st = this.ctx.state;
+    if (!st.regions[next].unlocked) {
+      if (this.crossT <= 0) {
+        this.crossT = 2;
+        this.ui.toast(`${REGION_BY_ID[next].name} : ${REGION_BY_ID[next].unlockHint}`, '🔒', 'warn');
+      }
+      this.player.teleport(px - dx * 0.6, pz - dz * 0.6);
+      return true;
+    }
+    this.crossInto(next, gx + dx * 0.9, gz + dz * 0.9);
+    return true;
+  }
+
+  private crossInto(next: RegionId, gx: number, gz: number): void {
+    const st = this.ctx.state;
+    const prev = this.world.region;
+    const p0 = WORLD_LAYOUT[prev]!, p = WORLD_LAYOUT[next]!;
+    this.fishing.end();
+    this.placement.cancel(false);
+    let w = this.worlds.get(next);
+    if (!w || w.builtDay !== st.time.day || w.season !== seasonOfDay(st.time.day)) {
+      if (!w) {
+        w = this.makeWorld();
+        this.worlds.set(next, w);
+      }
+      w.lite = false;
+      w.load(next);
+    }
+    this.activateWorld(w);
+    st.player.region = next;
+    const lx = gx - p.ox, lz = gz - p.oz;
+    this.player.teleport(lx, lz);
+    this.rig.shift(p0.ox - p.ox, p0.oz - p.oz);
+    this.entities.populate();
+    this.particles.clear();
+    this.life.clear();
+    this.sky.aurora = next === 'frosty' ? 1 : 0;
+    this.sky.tint.set(next === 'ember' ? 0xffd0b0 : 0xffffff);
+    this.player.updateRiding();
+    this.musicT = 0;
+    const rs = st.regions[next];
+    if (!rs.visited) {
+      rs.visited = true;
+      const def = REGION_BY_ID[next];
+      setTimeout(() => this.ui.reveal(() => h('div', null, h('span.em', null, def.icon), h('h2', null, def.name), h('p', null, def.desc))), 300);
+      audio.play('discover');
+    } else {
+      const def = REGION_BY_ID[next];
+      this.ui.toast(`${def.icon} ${def.name}`, '🧭');
+    }
+    this.ctx.progress('visit', next);
+    if (this.weatherFx) this.placePuddles();
+    this.regionTip(next);
+    this.save();
   }
 
   private checkPortals(dt: number): void {

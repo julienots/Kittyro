@@ -63,6 +63,10 @@ export interface RegionLayout {
   waterLevel: number;
   indoor: boolean;
   seasonal: boolean; // snow cover in winter
+  /** hidden places to discover (open-world strips) */
+  /** open world: where the roads cross into the neighbouring regions */
+  exits?: { to: RegionId; x: number; z: number }[];
+  spots?: { id: string; kind: 'secret' | 'lookout'; x: number; z: number; label: string; icon: string }[];
 }
 
 /** Helper used by region generators to paint tiles, heights, nodes and props. */
@@ -130,6 +134,9 @@ export class LayoutBuilder {
   }
   reserve(x0: number, z0: number, x1: number, z1: number): void {
     for (let x = Math.floor(x0); x < x1; x++) for (let z = Math.floor(z0); z < z1; z++) if (this.in(x, z)) this.reserved[this.i(x, z)] = 1;
+  }
+  clearReserved(x0: number, z0: number, x1: number, z1: number): void {
+    for (let x = Math.floor(x0); x < x1; x++) for (let z = Math.floor(z0); z < z1; z++) if (this.in(x, z)) this.reserved[this.i(x, z)] = 0;
   }
   isReserved(x: number, z: number): boolean {
     return !this.in(x, z) || this.reserved[this.i(x, z)] === 1;

@@ -6,6 +6,7 @@ import { HOUSE_W, HOUSE_D } from './houseLayout';
 import type { MineFloor } from '../systems/Mining';
 import { MINE_SIZE } from '../systems/Mining';
 import { HAMLET_AREA } from '../data/hamlet';
+import { expandLayout } from './Strips';
 
 /**
  * Hand-designed region layouts with procedural detail. Deterministic for a given
@@ -612,6 +613,11 @@ export function buildHamlet(seed: number, st: GameState): RegionLayout {
 }
 
 export function buildRegion(id: RegionId, st: GameState, mineFloor?: MineFloor): RegionLayout {
+  const L = buildRegionBase(id, st, mineFloor);
+  return expandLayout(L, st.seed, st);
+}
+
+function buildRegionBase(id: RegionId, st: GameState, mineFloor?: MineFloor): RegionLayout {
   const seed = st.seed;
   switch (id) {
     case 'farm': return buildFarm(seed, st);

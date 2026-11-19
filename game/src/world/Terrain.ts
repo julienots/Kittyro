@@ -4,6 +4,7 @@ import type { Season } from '../state/types';
 import { terrainMat, globalUniforms } from '../render/Materials';
 import { Noise2D } from '../core/Random';
 import { buildOutskirts } from './Outskirts';
+import { isOpenWorld } from './WorldMap';
 
 /**
  * Terrain = a floating diorama tile: soft vertex-coloured ground with painterly
@@ -27,7 +28,7 @@ export function seasonGrass(season: Season, regionId: string, theme?: [number, n
   }
 }
 
-function tileColor(t: number, season: Season, gc: TerrainColors, seasonal: boolean, regionId: string): number {
+export function tileColor(t: number, season: Season, gc: TerrainColors, seasonal: boolean, regionId: string): number {
   const winter = seasonal && season === 'winter';
   switch (t) {
     case T.GRASS: return gc.grass;
@@ -247,7 +248,7 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
     return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz;
   };
   let outskirts: THREE.Group | null = null;
-  if (!L.indoor) {
+  if (!L.indoor && !isOpenWorld(L.id)) {
     outskirts = buildOutskirts({ L, season, heightAt, water, colorOf: (t) => tileColor(t, season, gc, L.seasonal, L.id) });
     skirt.visible = false;
   }

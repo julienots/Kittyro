@@ -72,6 +72,11 @@ export class World {
   private dynBlocked: Uint8Array = new Uint8Array(0);
   private swimOk: Uint8Array = new Uint8Array(0);
   private smokeTimer = 0;
+  /** ghost = a neighbouring region seen in the distance (no grass, no lights, not simulated) */
+  lite = false;
+  private grassBuilt = false;
+  /** game day the region was built on (ghosts are rebuilt when entered on a later day) */
+  builtDay = -1;
 
   constructor(private ctx: Ctx, private particles: Particles, private qualityGrass: () => number, private maxLights: () => number) {
     const season = () => this.season;
@@ -120,7 +125,9 @@ export class World {
     this.dynBlocked = new Uint8Array(this.layout.w * this.layout.d);
     this.computeSwimmable();
     this.buildProps();
-    this.buildGrass();
+    this.grassBuilt = !this.lite;
+    if (!this.lite) this.buildGrass();
+    this.builtDay = st.time.day;
     this.buildStructures();
     this.buildCustomModels();
     this.buildNodes();
@@ -736,6 +743,7 @@ export class World {
       out.push({ id: 'hl_island', kind: 'secret', x: 37.4, z: 85.2, radius: 1.3, label: 'Île du lac', icon: '🏝️', data: { secret: 'island' } });
       out.push({ id: 'hl_windmill', kind: 'secret', x: 64.5, z: 67.8, radius: 1.6, label: 'Vieux moulin', icon: '🌾', data: { secret: 'windmill' } });
     }
+    for (const sp of L.spots ?? []) out.push({ id: sp.id, kind: sp.kind, x: sp.x, z: sp.z, radius: 1.7, label: sp.label, icon: sp.icon, data: { secret: sp.id } });
     if (this.region === 'ember') out.push({ id: 'spring', kind: 'secret', x: 37, z: 33, radius: 1.8, label: 'Source chaude', icon: '♨️', data: { secret: 'spring' } });
     if (this.region === 'mountains') out.push({ id: 'summit', kind: 'secret', x: 41.5, z: 12, radius: 1.5, label: 'Derrière la cascade', icon: '💧', data: { secret: 'waterfall' } });
     if (this.region === 'village' && st.village.fountain?.restored) {
@@ -804,8 +812,24 @@ export class World {
     }
   }
 
+  /** Becomes the region the player walks in. */
+  activate(): void {
+    this.lite = false;
+    if (!this.grassBuilt && this.layout) {
+      this.grassBuilt = true;
+      this.rebuildGrass();
+    }
+  }
+
+  /** Goes back to being scenery: drop the dynamic lights (keeps the shader light count constant). */
+  deactivate(): void {
+    for (const l of this.pointLights) this.root.remove(l);
+    this.pointLights = [];
+  }
+
   dispose(): void {
     this.unload();
+    this.root.removeFromParent();
   }
 }
 

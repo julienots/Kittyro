@@ -300,8 +300,10 @@ export class Guide {
         else if (here === 'mountains' && hop === 'mine') target = L.anchors.mine_door;
         else if (here === 'mine') target = L.anchors.ladder_up;
         else {
+          const ex = L.exits?.find((e) => e.to === hop);
           const p = L.portals.find((pp) => pp.to === hop);
-          if (p) target = { x: (p.x0 + p.x1) / 2, z: (p.z0 + p.z1) / 2 };
+          if (ex) target = { x: ex.x, z: ex.z };
+          else if (p) target = { x: (p.x0 + p.x1) / 2, z: (p.z0 + p.z1) / 2 };
         }
         label = hop === 'house' ? 'Maison' : `Vers ${REGION_BY_ID[hop]?.name ?? hop}`;
         if (g.region !== hop && hop !== 'house') hint = `${hint} — Chemin : passez par ${REGION_BY_ID[hop]?.name ?? hop}.`;

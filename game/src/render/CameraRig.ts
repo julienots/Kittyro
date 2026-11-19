@@ -60,6 +60,12 @@ export class CameraRig {
     }
   }
 
+  /** Move the whole rig (the world was re-centred under the player). */
+  shift(dx: number, dz: number): void {
+    this.target.x += dx; this.target.z += dz;
+    this.cur.x += dx; this.cur.z += dz;
+  }
+
   snap(p: THREE.Vector3): void {
     this.target.copy(p);
     this.cur.copy(p);

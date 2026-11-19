@@ -8,6 +8,21 @@ sans pression, **sans romance**.
 
 ![icône](docs/icon-512.png)
 
+## Monde ouvert (1.8)
+
+Plus d'îles ni d'écrans de chargement : toutes les régions extérieures forment **une seule
+grande vallée continue**. On passe de la ferme au village, à la forêt, aux montagnes, à la côte…
+**à pied**, par des routes de liaison, et on voit les régions voisines au loin.
+
+- carte du monde réelle (`game/src/world/WorldMap.ts`) : chaque région a sa place, les
+  régions voisines restent chargées autour du joueur, le terrain continue entre elles
+  (collines, forêts, rivières, la mer au-delà de la côte, montagnes à l'horizon)
+- routes de liaison avec du contenu (`game/src/world/Strips.ts`) : moulin de la colline,
+  verger en fleurs, étangs, puits, marché de bord de route, belvédère, clairière des fées,
+  tour du col, pierres du tertre, camps, lanternes, coffres, nouveaux secrets, arbres, rochers,
+  minerais, baies et cueillette
+- la carte (M) montre la vraie géographie
+
 ## Graphismes « Réaliste » (1.7)
 
 Nouvelle qualité graphique **Réaliste** (Menu ⚙️ → Qualité graphique), activée par défaut sur
@@ -32,15 +47,15 @@ Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.7.0-debug.apk` | **APK de test 1.7.0** (graphismes « Réaliste » + tout le contenu 1.6) |
+| `mossy-meadows-1.8.0-debug.apk` | **APK de test 1.8.0** (monde ouvert + graphismes « Réaliste ») |
 | `mossy-meadows-1.5.0-release.apk` | APK release signé (1.5.0) |
 | `mossy-meadows-1.5.0-release.aab` | Android App Bundle pour le Play Store (1.5.0) |
 
-> La version **release 1.7.0** doit être signée avec votre clé d'upload (non versionnée) :
+> La version **release 1.8.0** doit être signée avec votre clé d'upload (non versionnée) :
 > `./android/build.sh` en local avec `android/release.jks`, ou l'action GitHub « Android release ».
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.7.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.8.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 
