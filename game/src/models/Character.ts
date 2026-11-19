@@ -55,8 +55,10 @@ function fringe(b: ModelBuilder, color: number, n: number, opts: { from?: number
     const t = n === 1 ? 0.5 : i / (n - 1);
     const yaw = from + (to - from) * t;
     const a = onHead(yaw, lift, R * 1.08);
-    const c = onHead(yaw + sweep, lift - 0.42 - len * 1.5, R * 1.1);
-    b.limb(a, c, w, w * 0.35, i % 2 ? color : darker(color, 0.9), 7);
+    // bangs always stop above the eyes (front), side locks may hang lower
+    const front = Math.cos(yaw + sweep) > 0.55;
+    const c = onHead(yaw + sweep, Math.max(front ? 0.26 : -0.2, lift - 0.3 - len * 1.1), R * 1.1);
+    b.limb(a, c, w * 1.6, w * 0.9, i % 2 ? color : darker(color, 0.93), 9);
   }
 }
 
@@ -349,8 +351,7 @@ function buildFace(b: ModelBuilder, look: Appearance, skin: number, hair: number
     b.sphere(0.022, darker(skin, 0.85), { pos: [sx * R * 1.0, -0.01, 0.006], scale: [0.4, 0.9, 0.6] }, 6);
   }
   // nose
-  b.sphere(0.021, skin, { pos: [0, -0.03, R * 0.955], scale: [0.85, 1.05, 0.9] }, 10);
-  b.sphere(0.013, darker(skin, 0.88), { pos: [0, -0.046, R * 0.965], scale: [1.5, 0.5, 0.6] }, 6);
+  b.sphere(0.016, mix(skin, 0xff9a8a, 0.12), { pos: [0, -0.045, R * 0.965], scale: [1.15, 0.85, 0.8] }, 10);
   // mouth
   const lip = mix(skin, 0xc0505a, 0.55);
   const mouth = look.mouth ?? 0;
@@ -375,7 +376,7 @@ function buildFace(b: ModelBuilder, look: Appearance, skin: number, hair: number
     else b.torus(0.032, 0.0075, browCol, { pos: [x, 0.05, R * 0.94], rot: [-0.3, 0, 0] }, Math.PI * 0.8);
   }
   // cheeks & freckles
-  if (look.cheeks) for (const sx of [-1, 1]) b.sphere(0.03, mix(skin, 0xff7a8a, 0.55), { pos: [sx * 0.112, -0.058, R * 0.84], scale: [1.35, 0.7, 0.35] }, 8);
+  if (look.cheeks) for (const sx of [-1, 1]) b.sphere(0.03, mix(skin, 0xff8a96, 0.45), { pos: [sx * 0.12, -0.07, R * 0.84], scale: [1.3, 0.75, 0.35] }, 10);
   if (look.freckles) for (let i = 0; i < 10; i++) {
     const sx = i % 2 ? 1 : -1;
     b.sphere(0.0042, darker(skin, 0.72), { pos: [sx * (0.05 + (i % 5) * 0.011), -0.03 - (i % 3) * 0.011, R * 0.93] }, 4);
@@ -397,25 +398,27 @@ function buildEyes(look: Appearance, skin: number): THREE.BufferGeometry {
   const style = look.eyeStyle % 5;
   const lidCol = 0x2a1e1a;
   for (const sx of [-1, 1]) {
-    const x = sx * 0.075;
-    const z = R * 0.86;
+    const x = sx * 0.082;
+    const z = R * 0.84;
+    const ey = -0.014;
     if (style === 1) { // happy closed
-      b.torus(0.03, 0.007, lidCol, { pos: [x, 0.0, z + 0.022] }, Math.PI);
+      b.torus(0.034, 0.007, lidCol, { pos: [x, ey, z + 0.024] }, Math.PI);
       continue;
     }
     const w = style === 4 ? 1.2 : 1;
     const hgt = style === 4 ? 0.82 : style === 3 ? 0.9 : 1.12;
-    const ir = style === 2 ? 0.031 : 0.027;
-    b.sphere(0.04, 0xffffff, { pos: [x, 0.004, z], scale: [w, hgt, 0.5] }, 12);
-    b.sphere(ir, eyeCol, { pos: [x, 0.0, z + 0.012], scale: [1, 1.08, 0.5] }, 10);
-    b.sphere(ir * 0.55, mix(eyeCol, 0xffffff, 0.35), { pos: [x, -0.008, z + 0.016], scale: [1, 0.7, 0.4] }, 6);
-    b.sphere(ir * 0.52, 0x14100e, { pos: [x, 0.0, z + 0.018], scale: [1, 1.1, 0.45] }, 8);
-    b.sphere(0.0085, 0xffffff, { pos: [x + 0.011, 0.013, z + 0.026] }, 5);
-    if (style === 2) b.sphere(0.005, 0xffffff, { pos: [x - 0.01, -0.011, z + 0.025] }, 4);
+    const ir = style === 2 ? 0.039 : 0.035;
+    b.sphere(0.047, 0xffffff, { pos: [x, ey + 0.004, z], scale: [w, hgt, 0.5] }, 14);
+    b.sphere(ir, eyeCol, { pos: [x, ey, z + 0.012], scale: [1, 1.1, 0.5] }, 12);
+    b.sphere(ir * 0.6, mix(eyeCol, 0xffffff, 0.4), { pos: [x, ey - 0.012, z + 0.016], scale: [1, 0.65, 0.4] }, 8);
+    b.sphere(ir * 0.5, 0x14100e, { pos: [x, ey, z + 0.019], scale: [1, 1.1, 0.45] }, 10);
+    // glossy highlights
+    b.sphere(0.012, 0xffffff, { pos: [x + sx * 0.0 + 0.013, ey + 0.016, z + 0.028] }, 6);
+    b.sphere(0.0065, 0xffffff, { pos: [x - 0.012, ey - 0.014, z + 0.027] }, 5);
     // upper lid line (+ lashes)
-    b.torus(0.038 * w, 0.0055, lidCol, { pos: [x, 0.004, z + 0.006], rot: [0, 0, 0.06 * sx], scale: [1, hgt, 1] }, Math.PI);
-    if (style === 3) b.sphere(0.041, skin, { pos: [x, 0.028, z - 0.002], scale: [w * 1.02, 0.55, 0.52] }, 10); // half-lidded
-    if (look.lashes) for (let k = 0; k < 3; k++) b.limb([x + sx * (0.022 + k * 0.008), 0.03 - k * 0.006, z + 0.012], [x + sx * (0.036 + k * 0.01), 0.044 - k * 0.006, z + 0.012], 0.003, 0.0015, lidCol, 4, false);
+    b.torus(0.045 * w, 0.005, lidCol, { pos: [x, ey + 0.004, z + 0.007], rot: [0, 0, 0.06 * sx], scale: [1, hgt, 1] }, Math.PI);
+    if (style === 3) b.sphere(0.048, skin, { pos: [x, ey + 0.03, z - 0.002], scale: [w * 1.02, 0.55, 0.52] }, 10); // half-lidded
+    if (look.lashes) for (let k = 0; k < 3; k++) b.limb([x + sx * (0.03 + k * 0.008), ey + 0.034 - k * 0.007, z + 0.012], [x + sx * (0.044 + k * 0.01), ey + 0.048 - k * 0.007, z + 0.012], 0.003, 0.0015, lidCol, 4, false);
   }
   return b.build();
 }
@@ -618,8 +621,8 @@ export function buildCharacter(look: Appearance, opts: { outline?: boolean; scal
   body.add(head);
   const hb = mb(); // silhouette (outlined)
   const hd = mb(); // face details & hair locks (no outline)
-  hb.sphere(R, skin, { scale: [1, 1.04, 0.97] }, 22);
-  hb.sphere(R * 0.82, skin, { pos: [0, -0.075, 0.03], scale: [0.98, 0.78, 0.92] }, 16); // jaw / chin
+  hb.sphere(R, skin, { scale: [1.05, 1.0, 0.98] }, 24);
+  hb.sphere(R * 0.84, skin, { pos: [0, -0.07, 0.03], scale: [1.08, 0.8, 0.94] }, 18); // round cheeks & chin
   buildFace(hd, look, skin, hair);
   buildHair(hb, hd, look.hairStyle, hair);
   const hat = buildHat(look.hat, look.hatColor);
@@ -688,7 +691,7 @@ export function buildCharacter(look: Appearance, opts: { outline?: boolean; scal
 
   if (opts.outline) {
     for (const [geo, parent] of [[torsoBase, body], [headBase, head]] as [THREE.BufferGeometry, THREE.Group][]) {
-      const o = new THREE.Mesh(hull(geo, 0.011), outlineMat);
+      const o = new THREE.Mesh(hull(geo, 0.007), outlineMat);
       o.castShadow = false;
       parent.add(o);
       outlines.push(o);
