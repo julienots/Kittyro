@@ -31,6 +31,8 @@ export const globalUniforms = {
   uSkyColor: { value: new THREE.Color(0.8, 0.9, 1) },
   /** 1 when the RÉALISTE (PBR + cinematic) tier is active */
   uReal: { value: 0 },
+  /** world-map position of the active region's (0,0): keeps procedural patterns continuous across regions */
+  uOrigin: { value: new THREE.Vector3() },
   /** outdoor daylight 0..1 (0 indoors) */
   uDay: { value: 1 },
 };
@@ -217,6 +219,7 @@ function patch(mat: THREE.Material, o: MatOptions): void {
       uRim: globalUniforms.uRim,
       uShadowTint: globalUniforms.uShadowTint,
       uNight: globalUniforms.uNight,
+      uOrigin: globalUniforms.uOrigin,
     });
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>
       uniform float uTime; uniform float uWind; uniform vec3 uPlayerPos;
@@ -262,7 +265,7 @@ function patch(mat: THREE.Material, o: MatOptions): void {
 
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>
       uniform vec2 uPlayerScreen; uniform float uPlayerDepth; uniform float uSeeThrough; uniform float uAspect; uniform float uSnow;
-      uniform float uTime; uniform float uCloud;
+      uniform float uTime; uniform float uCloud; uniform vec3 uOrigin;
       uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uRimColor; uniform float uRim; uniform vec3 uShadowTint; uniform float uNight;
       varying vec3 vWorldNormalMM; varying vec4 vClipMM; varying vec3 vWorldPosMM;
       ${CLOUD_GLSL}
@@ -275,11 +278,11 @@ function patch(mat: THREE.Material, o: MatOptions): void {
     }
     if (clouds) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
-      diffuseColor.rgb *= cloudShadeMM(vWorldPosMM);`);
+      diffuseColor.rgb *= cloudShadeMM(vWorldPosMM + uOrigin);`);
     }
     if (grain) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
-      { vec2 gp = vWorldPosMM.xz;
+      { vec2 gp = vWorldPosMM.xz + uOrigin.xz;
         float gn = cNoiseMM(gp * 1.3) * 0.5 + cNoiseMM(gp * 4.7 + 3.1) * 0.3 + cNoiseMM(gp * 13.0 + 9.7) * 0.2;
         diffuseColor.rgb *= 1.0 + (gn - 0.5) * ${grain.toFixed(3)}; }`);
     }

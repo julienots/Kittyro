@@ -1688,6 +1688,7 @@ export class Game implements GameApi {
     }
     if (this.indoorWorld !== this.world) this.indoorWorld.root.visible = false;
     this.world.root.visible = true;
+    globalUniforms.uOrigin.value.set(open ? WORLD_LAYOUT[cur]!.ox : 0, 0, open ? WORLD_LAYOUT[cur]!.oz : 0);
     if (!open) {
       if (this.backdrop) this.backdrop.visible = false;
       for (const w of this.worlds.values()) w.root.visible = false;

@@ -4,7 +4,17 @@ import type { Season } from '../state/types';
 import { terrainMat, globalUniforms } from '../render/Materials';
 import { Noise2D } from '../core/Random';
 import { buildOutskirts } from './Outskirts';
-import { isOpenWorld } from './WorldMap';
+import { isOpenWorld, WORLD_LAYOUT, regionAt } from './WorldMap';
+
+/** One noise for the whole open world, sampled at world-map coordinates (seamless borders). */
+export const WORLD_NOISE = new Noise2D(77031);
+/** Ground colour variation shared by the regions and the land between them. */
+export function groundShade(gx: number, gz: number): number {
+  return 0.92 + WORLD_NOISE.get(gx * 0.6 + 20, gz * 0.6) * 0.16;
+}
+export function grassPatch(tx: number, tz: number): boolean {
+  return WORLD_NOISE.get(tx * 0.35 + 50, tz * 0.35) > 0.62;
+}
 
 /**
  * Terrain = a floating diorama tile: soft vertex-coloured ground with painterly
@@ -66,7 +76,13 @@ export interface TerrainResult {
 export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, number]): TerrainResult {
   const { w, d, tiles, heights } = L;
   const gc = seasonGrass(season, L.id, theme);
-  const noise = new Noise2D(w * 131 + d);
+  const open = isOpenWorld(L.id);
+  // open-world regions sample everything at world-map coordinates so borders match
+  const OX = open ? WORLD_LAYOUT[L.id]!.ox : 0, OZ = open ? WORLD_LAYOUT[L.id]!.oz : 0;
+  const noise = open ? WORLD_NOISE : new Noise2D(w * 131 + d);
+  // a farm colour theme fades back to the valley's grass near the borders
+  const plain = seasonGrass(season, L.id);
+  const themed = open && !!theme && (gc.grass !== plain.grass || gc.grass2 !== plain.grass2);
   const VW = w * S + 1, VD = d * S + 1;
 
   const tileH = (x: number, z: number) => {
@@ -93,26 +109,30 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
       const i = iz * VW + ix;
       let h = sampleH(px, pz);
       // tiny surface noise
-      h += (noise.get(px * 1.7, pz * 1.7) - 0.5) * 0.05;
+      const gx = px + OX, gz = pz + OZ;
+      h += (noise.get(gx * 1.7, gz * 1.7) - 0.5) * 0.05;
       vh[i] = h;
       pos[i * 3] = px;
       pos[i * 3 + 1] = h;
       pos[i * 3 + 2] = pz;
-      uv[i * 2] = px * 0.18;
-      uv[i * 2 + 1] = pz * 0.18;
+      uv[i * 2] = gx * 0.18;
+      uv[i * 2 + 1] = gz * 0.18;
+      const edgeK = themed ? Math.min(1, Math.min(px, pz, w - px, d - pz) / 8) : 1;
       // colour: average neighbouring tiles
       let r = 0, g = 0, bl = 0, n = 0;
       for (const [ox, oz] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) {
         const tx = Math.floor(px + ox), tz = Math.floor(pz + oz);
         if (tx < 0 || tz < 0 || tx >= w || tz >= d) continue;
         const t = tiles[tz * w + tx];
+        const g2 = open ? grassPatch(tx + OX, tz + OZ) : noise.get(tx * 0.35 + 50, tz * 0.35) > 0.62;
         let c = tileColor(t, season, gc, L.seasonal, L.id);
-        if (t === T.GRASS && noise.get(tx * 0.35 + 50, tz * 0.35) > 0.62) c = gc.grass2;
+        if (t === T.GRASS && g2) c = gc.grass2;
         tmpA.setHex(c);
+        if (t === T.GRASS && edgeK < 1) tmpA.lerp(tmpB.setHex(g2 ? plain.grass2 : plain.grass), 1 - edgeK);
         r += tmpA.r; g += tmpA.g; bl += tmpA.b; n++;
       }
       if (!n) { tmpA.setHex(0x3a3030); r = tmpA.r; g = tmpA.g; bl = tmpA.b; n = 1; }
-      const shade = 0.92 + noise.get(px * 0.6 + 20, pz * 0.6) * 0.16;
+      const shade = open ? groundShade(gx, gz) : 0.92 + noise.get(px * 0.6 + 20, pz * 0.6) * 0.16;
       // rocks get darker where they are steep
       col[i * 3] = (r / n) * shade;
       col[i * 3 + 1] = (g / n) * shade;
@@ -136,8 +156,24 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  // darken steep slopes a touch for depth
   const nrm = geo.attributes.normal;
+  if (open) {
+    // two touching regions are separate meshes: give their border vertices the same
+    // (flat) normal so lighting does not show a line where they meet; the seam band
+    // of the layout keeps that ground nearly level anyway
+    const RING = 3;
+    for (let iz = 0; iz < VD; iz++) for (let ix = 0; ix < VW; ix++) {
+      const r = Math.min(ix, iz, VW - 1 - ix, VD - 1 - iz);
+      if (r >= RING) continue;
+      const i = iz * VW + ix;
+      const k = 1 - r / RING;
+      const nx = nrm.getX(i) * (1 - k), ny = nrm.getY(i) * (1 - k) + k, nz = nrm.getZ(i) * (1 - k);
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nrm.setXYZ(i, nx / l, ny / l, nz / l);
+    }
+    nrm.needsUpdate = true;
+  }
+  // darken steep slopes a touch for depth
   for (let i = 0; i < VW * VD; i++) {
     const k = 0.75 + 0.25 * Math.max(0, nrm.getY(i));
     col[i * 3] *= k;
@@ -153,9 +189,11 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
   const layers = L.skirt;
   const bottom = -3.4;
   const layerYs = [0, -0.25, -1.3, -2.4, bottom];
-  const addEdge = (pts: [number, number][]) => {
+  const addEdge = (pts: [number, number][], ox = 0, oz = 0) => {
     for (let k = 0; k < pts.length - 1; k++) {
       const [ax, az] = pts[k], [bx, bz] = pts[k + 1];
+      // open world: no soil wall where the ground carries on into the next region
+      if (open && regionAt(OX + (ax + bx) / 2 + ox * 0.6, OZ + (az + bz) / 2 + oz * 0.6)) continue;
       const ha = sampleH(ax, az), hb = sampleH(bx, bz);
       for (let l = 0; l < 4; l++) {
         const base = sp.length / 3;
@@ -176,10 +214,10 @@ export function buildTerrain(L: RegionLayout, season: Season, theme?: [number, n
   for (let x = 0; x <= w + 1e-6; x += step) { north.push([x, 0]); south.push([w - x, d]); }
   for (let z = 0; z <= d + 1e-6; z += step) { east.push([w, z]); west.push([0, d - z]); }
   // winding so faces point outward
-  addEdge(north.slice().reverse());
-  addEdge(south.slice().reverse());
-  addEdge(east.slice().reverse());
-  addEdge(west.slice().reverse());
+  addEdge(north.slice().reverse(), 0, -1);
+  addEdge(south.slice().reverse(), 0, 1);
+  addEdge(east.slice().reverse(), 1, 0);
+  addEdge(west.slice().reverse(), -1, 0);
   const sg = new THREE.BufferGeometry();
   sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
   sg.setAttribute('color', new THREE.Float32BufferAttribute(sc, 3));
@@ -281,7 +319,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
       }`,
     fragmentShader: `
       uniform vec3 uColor; uniform vec3 uDeep; uniform float uTime; uniform float uFrozen;
-      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform float uNight; uniform float uReal;
+      uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform float uNight; uniform float uReal; uniform vec3 uOrigin;
       varying float vShore; varying vec3 vW;
       #include <fog_pars_fragment>
       float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
@@ -298,7 +336,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
         return pow(1.0 - abs(a), 7.0);
       }
       void main(){
-        vec2 p = vW.xz;
+        vec2 p = vW.xz + uOrigin.xz;
         float e = 0.06;
         float h0 = wav(p), hx = wav(p + vec2(e, 0.0)), hz = wav(p + vec2(0.0, e));
         vec3 N = normalize(vec3(-(hx - h0) / e * 0.09, 1.0, -(hz - h0) / e * 0.09));
@@ -334,6 +372,7 @@ export function waterMaterial(color: number, frozenTint = false): THREE.ShaderMa
   m.uniforms.uSkyColor = globalUniforms.uSkyColor;
   m.uniforms.uNight = globalUniforms.uNight;
   m.uniforms.uReal = globalUniforms.uReal;
+  m.uniforms.uOrigin = globalUniforms.uOrigin;
   return m;
 }
 

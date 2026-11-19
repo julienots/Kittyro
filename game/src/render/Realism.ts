@@ -12,7 +12,7 @@ import { globalUniforms } from './Materials';
 const converted = new WeakMap<THREE.Material, THREE.Material>();
 
 const REAL_COMMON = /* glsl */ `
-  varying vec3 vRealW;
+  varying vec3 vRealW; varying vec3 vRealG;
   float rHash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
   float rNoise(vec3 x){
     vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -29,16 +29,17 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
   mat.onBeforeCompile = (shader, renderer) => {
     prev.call(mat, shader, renderer);
     shader.uniforms.uWet = globalUniforms.uWet;
+    shader.uniforms.uOriginR = globalUniforms.uOrigin;
     shader.uniforms.uSunDirW = globalUniforms.uSunDir;
     shader.uniforms.uDay = globalUniforms.uDay;
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>
-      varying vec3 vRealW;`);
+      varying vec3 vRealW; varying vec3 vRealG; uniform vec3 uOriginR;`);
     vs = vs.replace('#include <project_vertex>', `#include <project_vertex>
       { vec4 rw = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           rw = instanceMatrix * rw;
         #endif
-        vRealW = (modelMatrix * rw).xyz; }`);
+        vRealW = (modelMatrix * rw).xyz; vRealG = vRealW + uOriginR; }`);
     shader.vertexShader = vs;
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>
       ${REAL_COMMON}
@@ -46,10 +47,10 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
     // albedo variation & grime in crevices (low areas get darker / dirtier)
     fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
       {
-        float g = rFbm(vRealW * ${kind.terrain ? '0.9' : '2.2'});
-        float fine = rNoise(vRealW * 11.0);
+        float g = rFbm(vRealG * ${kind.terrain ? '0.9' : '2.2'});
+        float fine = rNoise(vRealG * 11.0);
         diffuseColor.rgb *= mix(0.78, 1.12, g) * mix(0.93, 1.04, fine);
-        ${kind.terrain ? 'diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.82, 0.78, 0.7), smoothstep(0.55, 0.8, rFbm(vRealW * 0.35 + 3.0)) * 0.6);' : ''}
+        ${kind.terrain ? 'diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.82, 0.78, 0.7), smoothstep(0.55, 0.8, rFbm(vRealG * 0.35 + 3.0)) * 0.6);' : ''}
         // gentle de-pastelisation towards natural albedo
         float l = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
         diffuseColor.rgb = mix(vec3(l), diffuseColor.rgb, 0.88) * 0.86;
@@ -60,24 +61,24 @@ function realPatch(mat: THREE.MeshStandardMaterial, src: THREE.Material, kind: {
           vec3 c = diffuseColor.rgb;
           float green = smoothstep(0.015, 0.12, c.g - max(c.r, c.b));
           float lg = dot(c, vec3(0.2126, 0.7152, 0.0722));
-          vec3 olive = mix(vec3(lg), c, 0.75) * vec3(0.92, 0.84, 0.55) * mix(0.85, 1.05, rNoise(vRealW * 0.7));
+          vec3 olive = mix(vec3(lg), c, 0.75) * vec3(0.92, 0.84, 0.55) * mix(0.85, 1.05, rNoise(vRealG * 0.7));
           c = mix(c, olive, green * 0.7);
-          float dry = smoothstep(0.5, 0.72, rFbm(vRealW * 0.18 + 11.0)) * green;
+          float dry = smoothstep(0.5, 0.72, rFbm(vRealG * 0.18 + 11.0)) * green;
           c = mix(c, c * vec3(1.45, 1.05, 0.55), dry * 0.35);
-          float lush = smoothstep(0.55, 0.75, rFbm(vRealW * 0.25 - 4.0)) * green;
+          float lush = smoothstep(0.55, 0.75, rFbm(vRealG * 0.25 - 4.0)) * green;
           c = mix(c, c * vec3(0.75, 0.9, 0.7), lush * 0.5);
           diffuseColor.rgb = c;
         }` : ''}
       }`);
     fs = fs.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-      roughnessFactor = clamp(roughnessFactor * mix(0.75, 1.15, rNoise(vRealW * 5.0)) - uWet * ${kind.skin ? '0.0' : '0.45'}, 0.05, 1.0);`);
+      roughnessFactor = clamp(roughnessFactor * mix(0.75, 1.15, rNoise(vRealG * 5.0)) - uWet * ${kind.skin ? '0.0' : '0.45'}, 0.05, 1.0);`);
     // procedural bump: perturb the view-space normal by the world-space noise gradient
     fs = fs.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       {
         float f = ${kind.terrain ? '3.2' : kind.foliage ? '6.0' : '4.5'};
         float e = 0.04;
-        float n0 = rFbm(vRealW * f);
-        vec3 grad = vec3(rFbm((vRealW + vec3(e,0,0)) * f) - n0, rFbm((vRealW + vec3(0,e,0)) * f) - n0, rFbm((vRealW + vec3(0,0,e)) * f) - n0) / e;
+        float n0 = rFbm(vRealG * f);
+        vec3 grad = vec3(rFbm((vRealG + vec3(e,0,0)) * f) - n0, rFbm((vRealG + vec3(0,e,0)) * f) - n0, rFbm((vRealG + vec3(0,0,e)) * f) - n0) / e;
         vec3 gv = (viewMatrix * vec4(grad, 0.0)).xyz;
         normal = normalize(normal - (gv - dot(gv, normal) * normal) * ${bump.toFixed(3)} * 0.12);
       }`);

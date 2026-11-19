@@ -47,15 +47,15 @@ Les builds Android sont dans [`builds/`](builds/) :
 
 | Fichier | Usage |
 |---|---|
-| `mossy-meadows-1.8.0-debug.apk` | **APK de test 1.8.0** (monde ouvert + graphismes « Réaliste ») |
+| `mossy-meadows-1.8.1-debug.apk` | **APK de test 1.8.1** (monde ouvert + graphismes « Réaliste ») |
 | `mossy-meadows-1.5.0-release.apk` | APK release signé (1.5.0) |
 | `mossy-meadows-1.5.0-release.aab` | Android App Bundle pour le Play Store (1.5.0) |
 
-> La version **release 1.8.0** doit être signée avec votre clé d'upload (non versionnée) :
+> La version **release 1.8.1** doit être signée avec votre clé d'upload (non versionnée) :
 > `./android/build.sh` en local avec `android/release.jks`, ou l'action GitHub « Android release ».
 
 Installation : copier l'APK sur le téléphone et l'ouvrir (autoriser les sources inconnues), ou
-`adb install -r builds/mossy-meadows-1.8.0-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
+`adb install -r builds/mossy-meadows-1.8.1-debug.apk`. Android 7.0+ (API 24), WebGL 2 requis.
 
 ## Jouer dans le navigateur (développement)
 

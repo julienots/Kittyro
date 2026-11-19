@@ -125,8 +125,9 @@ export class World {
     this.dynBlocked = new Uint8Array(this.layout.w * this.layout.d);
     this.computeSwimmable();
     this.buildProps();
+    // ghosts get grass along their borders only (what you see from the next region)
     this.grassBuilt = !this.lite;
-    if (!this.lite) this.buildGrass();
+    this.buildGrass(this.lite ? 22 : Infinity);
     this.builtDay = st.time.day;
     this.buildStructures();
     this.buildCustomModels();
@@ -446,7 +447,7 @@ export class World {
     this.waterfalls.push(m);
   }
 
-  private buildGrass(): void {
+  private buildGrass(borderBand = Infinity): void {
     const L = this.layout;
     const density = L.grass * this.qualityGrass();
     if (density <= 0.01) return;
@@ -459,6 +460,7 @@ export class World {
       for (let x = 1; x < L.w - 1; x++) {
         const t = L.tiles[z * L.w + x];
         if (t !== T.GRASS && t !== T.FOREST) continue;
+        if (borderBand < Infinity && Math.min(x, z, L.w - 1 - x, L.d - 1 - z) > borderBand) continue;
         if (L.blocked[z * L.w + x]) continue;
         if (this.region === 'farm' && this.ctx.state.farm.plots[`${x},${z}`]) continue;
         const n = Math.floor(density * 3 + rng.next());

@@ -1,6 +1,7 @@
 import type { GameState, RegionId } from '../state/types';
 import { LayoutBuilder, T, WALKABLE, type RegionLayout, type Tile } from './Layout';
 import { Random, hashString } from '../core/Random';
+import { WORLD_NOISE } from './Terrain';
 import { WORLD_LAYOUT, isOpenWorld, regionAt } from './WorldMap';
 
 /**
@@ -172,7 +173,7 @@ const STRIPS: Partial<Record<RegionId, (c: StripCtx) => void>> = {
     b.structure({ kind: 'lookout', x: 51, z: 36, w: 3, d: 3 });
     spot(c, 'village_lookout', 52.5, 39.6, 'Belvédère de Willowbrook', '🔭', 'lookout');
     // seaside meadow towards the coast: sand, palms and beach chairs
-    for (let x = 48; x < 58; x++) for (let z = 43; z < 56; z++) if (b.get(x, z) === T.GRASS && b.noise.get(x * 0.3, z * 0.3) + (x - 48) * 0.05 > 0.75) b.set(x, z, T.SAND);
+    for (let x = 44; x < 55; x++) for (let z = 43; z < 56; z++) if (b.get(x, z) === T.GRASS && b.noise.get(x * 0.3, z * 0.3) + Math.min(x - 44, 55 - x) * 0.09 > 0.9) b.set(x, z, T.SAND); // a sandy dip that stays clear of the border
     for (const [x, z] of [[50, 54.5], [55.5, 45], [47, 55]] as Pt[]) place(c, 'palm', x, z, b.r.range(0, 6));
     place(c, 'beach_chair', 53, 54.4, 0.3);
     // a duck pond with benches south of the market
@@ -301,7 +302,8 @@ export function expandLayout(L: RegionLayout, seed: number, st: GameState): Regi
   N.anchors = L.anchors;
   // walking across region borders replaces the old travel portals
   N.portals = L.portals.filter((q) => !isOpenWorld(q.to));
-  N.grass = L.grass;
+  // same grass density on both sides of a border (meadow regions)
+  N.grass = ['farm', 'village', 'hamlet', 'highlands', 'coast'].includes(L.id) ? Math.max(L.grass, 0.7) : L.grass;
   N.flowers = L.flowers;
   N.skirt = L.skirt;
   N.waterLevel = L.waterLevel;
@@ -344,8 +346,32 @@ export function expandLayout(L: RegionLayout, seed: number, st: GameState): Regi
     const tx = Math.floor(q.x), tz = Math.floor(q.z);
     if (tx >= 0 && tz >= 0 && tx < W && tz < D) N.blocked[tz * W + tx] = 1;
   }
+  seamHeights(N);
   N.exits = computeExits(N);
   return N;
+}
+
+/** Height both neighbours agree on along a border (low-frequency world noise). */
+function seamH(gx: number, gz: number): number {
+  return (WORLD_NOISE.get(gx * 0.07 + 300, gz * 0.07) - 0.5) * 0.18;
+}
+
+/**
+ * Ease the last tiles of every border towards the shared seam height so the
+ * ground of two touching regions meets without a step.
+ */
+function seamHeights(L: RegionLayout): void {
+  const p = WORLD_LAYOUT[L.id]!;
+  const BAND = 3;
+  for (let z = 0; z < L.d; z++) for (let x = 0; x < L.w; x++) {
+    const dEdge = Math.min(x, z, L.w - 1 - x, L.d - 1 - z);
+    if (dEdge >= BAND) continue;
+    const i = z * L.w + x;
+    const t = L.tiles[i];
+    if (t === T.ROCK || t === T.WATER || t === T.DEEP || t === T.LAVA || t === T.BRIDGE) continue;
+    const k = 1 - dEdge / BAND;
+    L.heights[i] += (seamH(p.ox + x + 0.5, p.oz + z + 0.5) - L.heights[i]) * k * k;
+  }
 }
 
 /** Walkable border tiles that lead into another region, averaged per neighbour. */

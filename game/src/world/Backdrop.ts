@@ -6,7 +6,7 @@ import { terrainMat, vcMat } from '../render/Materials';
 import { treeGeo } from '../models/Nature';
 import { Noise2D } from '../core/Random';
 import { REGION_BY_ID } from '../data/regions';
-import { waterMaterial, tileColor, seasonGrass } from './Terrain';
+import { waterMaterial, tileColor, seasonGrass, groundShade, grassPatch } from './Terrain';
 
 /**
  * The land between and around the regions of the open world: one continuous
@@ -86,9 +86,10 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
     pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z;
     uv[k * 2] = x * 0.18; uv[k * 2 + 1] = z * 0.18;
     const gc = seasonGrass(season, r.id);
-    e.setHex(isWet(t) ? 0x3a8aa8 : tileColor(t, season, gc, L.seasonal, r.id));
+    const ltx = Math.floor(x), ltz = Math.floor(z);
+    e.setHex(isWet(t) ? 0x3a8aa8 : t === T.GRASS && grassPatch(ltx, ltz) ? gc.grass2 : tileColor(t, season, gc, L.seasonal, r.id));
     if (inside) {
-      const sh = 0.9 + noise.get(x * 0.6 + 20, z * 0.6) * 0.18;
+      const sh = groundShade(x, z);
       col[k * 3] = e.r * sh; col[k * 3 + 1] = e.g * sh; col[k * 3 + 2] = e.b * sh;
       continue;
     }
@@ -102,7 +103,7 @@ export function buildBackdrop(layouts: Map<RegionId, RegionLayout>, season: Seas
     c.lerp(hillC, up * 0.8);
     c.lerp(rockC, THREE.MathUtils.smoothstep(y, 9, 16) * 0.75);
     if (r.id !== 'ember' && r.id !== 'coast') c.lerp(snowC, THREE.MathUtils.smoothstep(y, 15, 22));
-    const shade = 0.9 + noise.get(x * 0.6 + 20, z * 0.6) * 0.18;
+    const shade = groundShade(x, z);
     col[k * 3] = c.r * shade; col[k * 3 + 1] = c.g * shade; col[k * 3 + 2] = c.b * shade;
   }
   const idx: number[] = [];
